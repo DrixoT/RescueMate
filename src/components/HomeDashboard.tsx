@@ -95,7 +95,7 @@ export function HomeDashboard({ onNavigate }: HomeDashboardProps) {
             onClick={handleSOSPress}
             className="relative w-56 h-56 rounded-full bg-gradient-to-br from-[#E91E63] to-[#C2185B] hover:from-[#FF1744] hover:to-[#E91E63] text-white shadow-2xl animate-pulse-glow"
           >
-            <Shield className="!w-48 !h-48" strokeWidth={2} />
+            <Shield style={{ width: '125px', height: '125px' }} strokeWidth={2.5} />
           </Button>
         </motion.div>
       </div>
