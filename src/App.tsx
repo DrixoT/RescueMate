@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { OnboardingScreen } from "./components/OnboardingScreen";
 import { SignInScreen } from "./components/SignInScreen";
 import { SignUpScreen } from "./components/SignUpScreen";
@@ -11,16 +11,33 @@ import { SettingsScreen } from "./components/SettingsScreen";
 type Screen = 'onboarding' | 'signin' | 'signup' | 'home' | 'contacts' | 'addContact' | 'location' | 'settings';
 
 export default function App() {
-  const [currentScreen, setCurrentScreen] = useState<Screen>('onboarding');
+  const [currentScreen, setCurrentScreen] = useState<Screen>(() => {
+    // Check if user has completed onboarding
+    const hasCompletedOnboarding = localStorage.getItem('rescuemate_onboarding_complete');
+    const isAuthenticated = localStorage.getItem('rescuemate_authenticated');
+
+    if (hasCompletedOnboarding && isAuthenticated) {
+      return 'home';
+    } else if (hasCompletedOnboarding) {
+      return 'signin';
+    }
+    return 'onboarding';
+  });
 
   const renderScreen = () => {
     switch (currentScreen) {
       case 'onboarding':
-        return <OnboardingScreen onStart={() => setCurrentScreen('signin')} />;
+        return <OnboardingScreen onStart={() => {
+          localStorage.setItem('rescuemate_onboarding_complete', 'true');
+          setCurrentScreen('signin');
+        }} />;
       case 'signin':
         return (
           <SignInScreen
-            onSignIn={() => setCurrentScreen('home')}
+            onSignIn={() => {
+              localStorage.setItem('rescuemate_authenticated', 'true');
+              setCurrentScreen('home');
+            }}
             onSignUp={() => setCurrentScreen('signup')}
           />
         );
@@ -28,7 +45,10 @@ export default function App() {
         return (
           <SignUpScreen
             onBack={() => setCurrentScreen('signin')}
-            onComplete={() => setCurrentScreen('home')}
+            onComplete={() => {
+              localStorage.setItem('rescuemate_authenticated', 'true');
+              setCurrentScreen('home');
+            }}
           />
         );
       case 'home':

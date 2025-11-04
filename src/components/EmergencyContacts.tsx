@@ -2,13 +2,22 @@ import { motion } from "motion/react";
 import { ArrowLeft, Phone, MessageSquare, Plus, Star } from "lucide-react";
 import { Button } from "./ui/button";
 import { Card } from "./ui/card";
+import { useState, useEffect } from "react";
 
 interface EmergencyContactsProps {
   onBack: () => void;
   onAddContact: () => void;
 }
 
-const contacts = [
+interface Contact {
+  id: number;
+  name: string;
+  relationship: string;
+  phone: string;
+  isPrimary: boolean;
+}
+
+const defaultContacts: Contact[] = [
   { id: 1, name: "Sarah Mitchell", relationship: "Primary Contact", phone: "+1 (555) 0123", isPrimary: true },
   { id: 2, name: "Dr. James Chen", relationship: "Emergency Physician", phone: "+1 (555) 0456", isPrimary: false },
   { id: 3, name: "Alex Johnson", relationship: "Family", phone: "+1 (555) 0789", isPrimary: false },
@@ -16,6 +25,26 @@ const contacts = [
 ];
 
 export function EmergencyContacts({ onBack, onAddContact }: EmergencyContactsProps) {
+  const [contacts, setContacts] = useState<Contact[]>(() => {
+    const saved = localStorage.getItem('rescuemate_contacts');
+    return saved ? JSON.parse(saved) : defaultContacts;
+  });
+
+  useEffect(() => {
+    localStorage.setItem('rescuemate_contacts', JSON.stringify(contacts));
+  }, [contacts]);
+
+  const handleCall = (phone: string) => {
+    // In a real app, this would use tel: protocol or native phone API
+    console.log('Calling:', phone);
+    window.location.href = `tel:${phone}`;
+  };
+
+  const handleMessage = (phone: string) => {
+    // In a real app, this would use sms: protocol or native messaging API
+    console.log('Messaging:', phone);
+    window.location.href = `sms:${phone}`;
+  };
   return (
     <div className="relative min-h-screen flex flex-col px-6 py-8 overflow-hidden">
       {/* Background gradient */}
@@ -78,7 +107,9 @@ export function EmergencyContacts({ onBack, onAddContact }: EmergencyContactsPro
               <div className="flex gap-2">
                 <Button
                   size="sm"
+                  onClick={() => handleCall(contact.phone)}
                   className="flex-1 bg-[#E91E63] hover:bg-[#C2185B] text-white h-9"
+                  aria-label={`Call ${contact.name}`}
                 >
                   <Phone className="w-3.5 h-3.5 mr-1.5" />
                   Call
@@ -86,7 +117,9 @@ export function EmergencyContacts({ onBack, onAddContact }: EmergencyContactsPro
                 <Button
                   size="sm"
                   variant="outline"
+                  onClick={() => handleMessage(contact.phone)}
                   className="flex-1 bg-transparent border-[#5A1E3C] hover:bg-[#2d1420] text-[#e8dff5] h-9"
+                  aria-label={`Message ${contact.name}`}
                 >
                   <MessageSquare className="w-3.5 h-3.5 mr-1.5" />
                   Message

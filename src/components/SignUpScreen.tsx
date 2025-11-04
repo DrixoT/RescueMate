@@ -13,6 +13,8 @@ interface SignUpScreenProps {
 }
 
 export function SignUpScreen({ onBack, onComplete }: SignUpScreenProps) {
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [errors, setErrors] = useState<Record<string, string>>({});
   const [formData, setFormData] = useState({
     name: "",
     age: "",
@@ -23,10 +25,49 @@ export function SignUpScreen({ onBack, onComplete }: SignUpScreenProps) {
     allergies: "",
   });
 
+  const validateForm = () => {
+    const newErrors: Record<string, string> = {};
+
+    if (!formData.name.trim()) {
+      newErrors.name = "Name is required";
+    }
+
+    if (!formData.age) {
+      newErrors.age = "Age is required";
+    } else if (parseInt(formData.age) < 1 || parseInt(formData.age) > 120) {
+      newErrors.age = "Please enter a valid age";
+    }
+
+    if (!formData.gender) {
+      newErrors.gender = "Gender is required";
+    }
+
+    if (!formData.phone.trim()) {
+      newErrors.phone = "Phone number is required";
+    } else if (!/^[\d\s\-\+\(\)]+$/.test(formData.phone)) {
+      newErrors.phone = "Please enter a valid phone number";
+    }
+
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    // In a real app, this would send data to backend
-    onComplete();
+
+    if (!validateForm()) {
+      return;
+    }
+
+    setIsSubmitting(true);
+
+    // Simulate API call
+    setTimeout(() => {
+      // Save user profile to localStorage
+      localStorage.setItem('rescuemate_user_profile', JSON.stringify(formData));
+      setIsSubmitting(false);
+      onComplete();
+    }, 500);
   };
 
   return (

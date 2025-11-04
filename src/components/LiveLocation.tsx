@@ -1,18 +1,94 @@
 import { motion } from "motion/react";
-import { ArrowLeft, MapPin, Navigation, Share2, Clock } from "lucide-react";
+import { ArrowLeft, MapPin, Navigation, Share2, Clock, AlertCircle } from "lucide-react";
 import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 interface LiveLocationProps {
   onBack: () => void;
 }
 
+interface LocationData {
+  latitude: number;
+  longitude: number;
+  accuracy: number;
+  timestamp: number;
+}
+
 export function LiveLocation({ onBack }: LiveLocationProps) {
   const [isSharing, setIsSharing] = useState(false);
+  const [location, setLocation] = useState<LocationData | null>(null);
+  const [error, setError] = useState<string>("");
+  const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
+
+  useEffect(() => {
+    if (isSharing) {
+      // Start watching location
+      if ("geolocation" in navigator) {
+        const watchId = navigator.geolocation.watchPosition(
+          (position) => {
+            setLocation({
+              latitude: position.coords.latitude,
+              longitude: position.coords.longitude,
+              accuracy: position.coords.accuracy,
+              timestamp: position.timestamp,
+            });
+            setLastUpdate(new Date());
+            setError("");
+          },
+          (err) => {
+            setError(err.message);
+            console.error("Geolocation error:", err);
+          },
+          {
+            enableHighAccuracy: true,
+            timeout: 5000,
+            maximumAge: 0,
+          }
+        );
+
+        return () => navigator.geolocation.clearWatch(watchId);
+      } else {
+        setError("Geolocation is not supported by your browser");
+      }
+    }
+  }, [isSharing]);
 
   const handleShareLocation = () => {
+    if (!isSharing && !("geolocation" in navigator)) {
+      setError("Geolocation is not supported by your browser");
+      return;
+    }
     setIsSharing(!isSharing);
+    if (!isSharing) {
+      // Request initial location
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          setLocation({
+            latitude: position.coords.latitude,
+            longitude: position.coords.longitude,
+            accuracy: position.coords.accuracy,
+            timestamp: position.timestamp,
+          });
+          setLastUpdate(new Date());
+        },
+        (err) => {
+          setError(err.message);
+        }
+      );
+    }
+  };
+
+  const formatCoordinate = (coord: number, isLat: boolean) => {
+    const direction = isLat ? (coord >= 0 ? 'N' : 'S') : (coord >= 0 ? 'E' : 'W');
+    return `${Math.abs(coord).toFixed(4)}° ${direction}`;
+  };
+
+  const getAccuracyLevel = (accuracy: number) => {
+    if (accuracy < 10) return 'Excellent';
+    if (accuracy < 50) return 'High';
+    if (accuracy < 100) return 'Medium';
+    return 'Low';
   };
 
   return (
@@ -101,25 +177,51 @@ export function LiveLocation({ onBack }: LiveLocationProps) {
         {/* Coordinates Overlay */}
         <div className="absolute top-4 left-4 right-4">
           <div className="bg-[#1a0f23]/90 backdrop-blur-sm rounded-lg p-3 border border-[#5A1E3C]">
-            <div className="flex items-start gap-2">
-              <MapPin className="w-4 h-4 text-[#E91E63] mt-0.5 flex-shrink-0" />
-              <div className="flex-1 min-w-0">
-                <p className="uppercase tracking-[0.15em] text-[10px] text-[#a89bb5] mb-1">
-                  Current Location
-                </p>
-                <p className="text-sm text-[#e8dff5]">
-                  37.7749° N, 122.4194° W
-                </p>
-                <p className="text-xs text-[#a89bb5] mt-1">
-                  San Francisco, CA
-                </p>
+            {error ? (
+              <div className="flex items-start gap-2">
+                <AlertCircle className="w-4 h-4 text-[#E91E63] mt-0.5 flex-shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <p className="uppercase tracking-[0.15em] text-[10px] text-[#a89bb5] mb-1">
+                    Location Error
+                  </p>
+                  <p className="text-xs text-[#e8dff5]">
+                    {error}
+                  </p>
+                </div>
               </div>
-            </div>
+            ) : location ? (
+              <div className="flex items-start gap-2">
+                <MapPin className="w-4 h-4 text-[#E91E63] mt-0.5 flex-shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <p className="uppercase tracking-[0.15em] text-[10px] text-[#a89bb5] mb-1">
+                    Current Location
+                  </p>
+                  <p className="text-sm text-[#e8dff5]">
+                    {formatCoordinate(location.latitude, true)}, {formatCoordinate(location.longitude, false)}
+                  </p>
+                  <p className="text-xs text-[#a89bb5] mt-1">
+                    Accuracy: {getAccuracyLevel(location.accuracy)} ({Math.round(location.accuracy)}m)
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <div className="flex items-start gap-2">
+                <MapPin className="w-4 h-4 text-[#a89bb5] mt-0.5 flex-shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <p className="uppercase tracking-[0.15em] text-[10px] text-[#a89bb5] mb-1">
+                    Location
+                  </p>
+                  <p className="text-sm text-[#a89bb5]">
+                    Waiting for location data...
+                  </p>
+                </div>
+              </div>
+            )}
           </div>
         </div>
         
         {/* Last Updated */}
-        {isSharing && (
+        {isSharing && lastUpdate && (
           <motion.div
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
@@ -129,7 +231,7 @@ export function LiveLocation({ onBack }: LiveLocationProps) {
               <div className="flex items-center gap-2">
                 <Clock className="w-3.5 h-3.5 text-[#a89bb5]" />
                 <p className="text-xs text-[#a89bb5]">
-                  Last updated: Just now • Accuracy: High
+                  Last updated: {lastUpdate.toLocaleTimeString()} • Accuracy: {location ? getAccuracyLevel(location.accuracy) : 'Unknown'}
                 </p>
               </div>
             </div>

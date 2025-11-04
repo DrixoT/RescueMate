@@ -14,6 +14,8 @@ interface AddContactScreenProps {
 
 export function AddContactScreen({ onBack, onSave }: AddContactScreenProps) {
   const [isPrimary, setIsPrimary] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [errors, setErrors] = useState<Record<string, string>>({});
   const [formData, setFormData] = useState({
     name: "",
     relationship: "",
@@ -21,10 +23,59 @@ export function AddContactScreen({ onBack, onSave }: AddContactScreenProps) {
     email: "",
   });
 
+  const validateForm = () => {
+    const newErrors: Record<string, string> = {};
+
+    if (!formData.name.trim()) {
+      newErrors.name = "Name is required";
+    }
+
+    if (!formData.relationship) {
+      newErrors.relationship = "Relationship is required";
+    }
+
+    if (!formData.phone.trim()) {
+      newErrors.phone = "Phone number is required";
+    } else if (!/^[\d\s\-\+\(\)]+$/.test(formData.phone)) {
+      newErrors.phone = "Please enter a valid phone number";
+    }
+
+    if (formData.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
+      newErrors.email = "Please enter a valid email address";
+    }
+
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    // In a real app, this would save the contact
-    onSave();
+
+    if (!validateForm()) {
+      return;
+    }
+
+    setIsSubmitting(true);
+
+    // Simulate API call
+    setTimeout(() => {
+      // Save to localStorage
+      const existingContacts = JSON.parse(localStorage.getItem('rescuemate_contacts') || '[]');
+      const newContact = {
+        id: Date.now(),
+        name: formData.name,
+        relationship: formData.relationship,
+        phone: formData.phone,
+        email: formData.email,
+        isPrimary: isPrimary,
+      };
+
+      existingContacts.push(newContact);
+      localStorage.setItem('rescuemate_contacts', JSON.stringify(existingContacts));
+
+      setIsSubmitting(false);
+      onSave();
+    }, 500);
   };
 
   return (
@@ -102,10 +153,20 @@ export function AddContactScreen({ onBack, onSave }: AddContactScreenProps) {
                 type="text"
                 required
                 value={formData.name}
-                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                className="bg-[#1a0f23] border-[#5A1E3C] text-[#e8dff5] focus:border-[#E91E63] h-12"
+                onChange={(e) => {
+                  setFormData({ ...formData, name: e.target.value });
+                  if (errors.name) setErrors({ ...errors, name: "" });
+                }}
+                className={`bg-[#1a0f23] border-[#5A1E3C] text-[#e8dff5] focus:border-[#E91E63] h-12 ${
+                  errors.name ? 'border-[#E91E63]' : ''
+                }`}
                 placeholder="Enter contact name"
+                aria-invalid={!!errors.name}
+                aria-describedby={errors.name ? "name-error" : undefined}
               />
+              {errors.name && (
+                <p id="name-error" className="text-xs text-[#E91E63]">{errors.name}</p>
+              )}
             </div>
             
             {/* Relationship */}
@@ -115,9 +176,14 @@ export function AddContactScreen({ onBack, onSave }: AddContactScreenProps) {
               </Label>
               <Select
                 value={formData.relationship}
-                onValueChange={(value) => setFormData({ ...formData, relationship: value })}
+                onValueChange={(value) => {
+                  setFormData({ ...formData, relationship: value });
+                  if (errors.relationship) setErrors({ ...errors, relationship: "" });
+                }}
               >
-                <SelectTrigger className="bg-[#1a0f23] border-[#5A1E3C] text-[#e8dff5] focus:border-[#E91E63] h-12">
+                <SelectTrigger className={`bg-[#1a0f23] border-[#5A1E3C] text-[#e8dff5] focus:border-[#E91E63] h-12 ${
+                  errors.relationship ? 'border-[#E91E63]' : ''
+                }`}>
                   <SelectValue placeholder="Select relationship" />
                 </SelectTrigger>
                 <SelectContent className="bg-[#1a0f23] border-[#5A1E3C]">
@@ -130,14 +196,27 @@ export function AddContactScreen({ onBack, onSave }: AddContactScreenProps) {
                   <SelectItem value="other" className="text-[#e8dff5]">Other</SelectItem>
                 </SelectContent>
               </Select>
+              {errors.relationship && (
+                <p id="relationship-error" className="text-xs text-[#E91E63]">{errors.relationship}</p>
+              )}
             </div>
             
             {/* Phone Number */}
             <div className="space-y-2">
-              <Label htmlFor="phone" className="text-[#e8dff5]">
-                Phone Number *
+                onChange={(e) => {
+                  setFormData({ ...formData, phone: e.target.value });
+                  if (errors.phone) setErrors({ ...errors, phone: "" });
+                }}
+                className={`bg-[#1a0f23] border-[#5A1E3C] text-[#e8dff5] focus:border-[#E91E63] h-12 ${
+                  errors.phone ? 'border-[#E91E63]' : ''
+                }`}
               </Label>
+                aria-invalid={!!errors.phone}
+                aria-describedby={errors.phone ? "phone-error" : undefined}
               <Input
+              {errors.phone && (
+                <p id="phone-error" className="text-xs text-[#E91E63]">{errors.phone}</p>
+              )}
                 id="phone"
                 type="tel"
                 required
@@ -149,10 +228,20 @@ export function AddContactScreen({ onBack, onSave }: AddContactScreenProps) {
             </div>
             
             {/* Email (Optional) */}
-            <div className="space-y-2">
-              <Label htmlFor="email" className="text-[#e8dff5]">
+                onChange={(e) => {
+                  setFormData({ ...formData, email: e.target.value });
+                  if (errors.email) setErrors({ ...errors, email: "" });
+                }}
+                className={`bg-[#1a0f23] border-[#5A1E3C] text-[#e8dff5] focus:border-[#E91E63] h-12 ${
+                  errors.email ? 'border-[#E91E63]' : ''
+                }`}
                 Email Address <span className="text-[#a89bb5] text-xs">(Optional)</span>
+                aria-invalid={!!errors.email}
+                aria-describedby={errors.email ? "email-error" : undefined}
               </Label>
+              {errors.email && (
+                <p id="email-error" className="text-xs text-[#E91E63]">{errors.email}</p>
+              )}
               <Input
                 id="email"
                 type="email"
@@ -162,15 +251,17 @@ export function AddContactScreen({ onBack, onSave }: AddContactScreenProps) {
                 placeholder="contact@example.com"
               />
             </div>
+              disabled={isSubmitting}
           </motion.div>
           
           {/* Info Box */}
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
+              disabled={isSubmitting}
             transition={{ delay: 0.3 }}
             className="p-4 bg-[#2d1420]/50 rounded-lg border border-[#5A1E3C]"
-          >
+              {isSubmitting ? 'Saving...' : 'Save Contact'}
             <p className="uppercase tracking-[0.2em] text-[10px] text-[#a89bb5] mb-2">
               Important
             </p>

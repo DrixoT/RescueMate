@@ -1,0 +1,36 @@
+{
+  "name": "rescuemate-backend",
+  "version": "1.0.0",
+  "description": "Secure backend proxy for RescueMate mobile app - handles ElevenLabs and Google Maps API calls",
+  "main": "backend-voice-proxy.js",
+  "scripts": {
+    "start": "node backend-voice-proxy.js",
+    "dev": "nodemon backend-voice-proxy.js",
+    "test": "echo \"No tests specified\" && exit 0"
+  },
+  "keywords": [
+    "rescuemate",
+    "emergency",
+    "voice-ai",
+    "elevenlabs",
+    "backend",
+    "proxy"
+  ],
+  "author": "RescueMate Team",
+  "license": "UNLICENSED",
+  "private": true,
+  "dependencies": {
+    "express": "^4.18.2",
+    "cors": "^2.8.5",
+    "dotenv": "^16.3.1",
+    "node-fetch": "^2.7.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1"
+  },
+  "engines": {
+    "node": ">=16.0.0",
+    "npm": ">=8.0.0"
+  }
+}
+

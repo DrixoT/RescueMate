@@ -1,16 +1,125 @@
 import { motion } from "motion/react";
-import { Users, Settings, MapPin, Wifi, Shield } from "lucide-react";
+import { Users, Settings, MapPin, Wifi, Shield, AlertCircle, PhoneCall } from "lucide-react";
 import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
+import { useState, useEffect } from "react";
+import { getVoiceAIService, isVoiceAIInitialized, initializeVoiceAI } from "../services/VoiceAIService";
 
 interface HomeDashboardProps {
   onNavigate: (screen: string) => void;
 }
 
 export function HomeDashboard({ onNavigate }: HomeDashboardProps) {
+  const [sosActive, setSOSActive] = useState(false);
+  const [voiceCallStatus, setVoiceCallStatus] = useState<string>('');
+  const [sosCountdown, setSOSCountdown] = useState<number | null>(null);
+
   const handleSOSPress = () => {
-    // Simulate SOS activation
-    alert("🚨 SOS ACTIVATED\n\nEmergency services and your contacts have been notified.\nYour location is being shared.");
+    if (sosActive) {
+      // Cancel SOS
+      setSOSActive(false);
+      setVoiceCallStatus('');
+      setSOSCountdown(null);
+      return;
+    }
+
+    // Start 3-second countdown before activating
+    let count = 3;
+
+
+    const interval = setInterval(() => {
+      count--;
+      if (count > 0) {
+        setSOSCountdown(count);
+      } else {
+        clearInterval(interval);
+        activateSOS();
+      }
+    }, 1000);
+  };
+
+  const activateSOS = async () => {
+    setSOSActive(true);
+
+    try {
+      // Get user profile
+      const userProfile = JSON.parse(localStorage.getItem('rescuemate_user_profile') || '{}');
+      const contacts = JSON.parse(localStorage.getItem('rescuemate_contacts') || '[]');
+
+      // Get current location
+      const position = await new Promise<GeolocationPosition>((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(resolve, reject, {
+          enableHighAccuracy: true,
+          timeout: 10000,
+          maximumAge: 0
+        });
+      });
+
+      const location = {
+        latitude: position.coords.latitude,
+        longitude: position.coords.longitude
+      };
+
+      console.log('🚨 SOS ACTIVATED');
+      console.log('📍 Location:', location);
+      console.log('📞 Contacts to notify:', contacts.length);
+
+      // Check if Voice AI is enabled
+      const voiceAIEnabled = localStorage.getItem('rescuemate_voiceai_enabled') === 'true';
+
+      if (voiceAIEnabled && isVoiceAIInitialized()) {
+        setVoiceCallStatus('Initiating Voice AI call...');
+
+        const voiceAI = getVoiceAIService();
+        if (voiceAI) {
+          // Set up status callback
+          voiceAI.setStatusCallback((status) => {
+            setVoiceCallStatus(status.message);
+          });
+
+          // Make emergency call
+          await voiceAI.initiateEmergencyCall({
+            userName: userProfile.name || 'Unknown User',
+            age: parseInt(userProfile.age) || 0,
+            gender: userProfile.gender || 'Unknown',
+            condition: 'Emergency SOS button activated - immediate assistance required',
+            location: location,
+            timestamp: new Date(),
+            medicalInfo: {
+              allergies: userProfile.allergies,
+              medications: userProfile.currentMedication,
+              conditions: userProfile.medicalHistory
+            }
+          });
+
+          console.log('✅ Voice AI call completed');
+
+        {voiceCallStatus && sosActive && (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mb-4 px-4 py-2 bg-[#2d1420] border border-[#5A1E3C] rounded-lg flex items-center gap-2"
+          >
+            <PhoneCall className="w-4 h-4 text-[#E91E63] animate-pulse" />
+            <p className="text-xs text-[#e8dff5]">{voiceCallStatus}</p>
+          </motion.div>
+        )}
+        }
+      } else {
+        setVoiceCallStatus('Voice AI not enabled. Configure in Settings.');
+      }
+        console.log('🚨 SOS ACTIVATED - Emergency alerts sent to:', contacts);
+      // In production, this would:
+      // 1. Send SMS/push notifications to emergency contacts
+      // 2. Call emergency services if configured
+      // 3. Start continuous location sharing
+      // 4. Record audio/video if enabled
+
+    } catch (error) {
+      console.error('SOS activation error:', error);
+      setVoiceCallStatus(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+    }, 1000);
   };
 
   return (
@@ -49,7 +158,18 @@ export function HomeDashboard({ onNavigate }: HomeDashboardProps) {
       </div>
       
       {/* Main SOS Button */}
-      <div className="relative z-10 flex-1 flex items-center justify-center">
+      <div className="relative z-10 flex-1 flex items-center justify-center flex-col">
+        {sosActive && (
+          <motion.div
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mb-4 px-4 py-2 bg-[#E91E63] rounded-full flex items-center gap-2"
+          >
+            <AlertCircle className="w-4 h-4" />
+            <p className="text-sm font-semibold">SOS ACTIVE - Help is on the way</p>
+          </motion.div>
+        )}
+
         <motion.div
           className="relative"
           whileHover={{ scale: 1.05 }}
@@ -59,16 +179,16 @@ export function HomeDashboard({ onNavigate }: HomeDashboardProps) {
           <motion.div
             className="absolute inset-0 rounded-full"
             animate={{
-              scale: [1, 1.2, 1],
-              opacity: [0.5, 0.2, 0.5],
+              scale: sosActive ? [1, 1.3, 1] : [1, 1.2, 1],
+              opacity: sosActive ? [0.7, 0.3, 0.7] : [0.5, 0.2, 0.5],
             }}
             transition={{
-              duration: 2,
+              duration: sosActive ? 1 : 2,
               repeat: Infinity,
               ease: "easeInOut",
             }}
             style={{
-              background: 'radial-gradient(circle, rgba(233, 30, 99, 0.4) 0%, rgba(233, 30, 99, 0) 70%)',
+              background: `radial-gradient(circle, rgba(233, 30, 99, ${sosActive ? '0.6' : '0.4'}) 0%, rgba(233, 30, 99, 0) 70%)`,
             }}
           />
           
@@ -76,26 +196,43 @@ export function HomeDashboard({ onNavigate }: HomeDashboardProps) {
           <motion.div
             className="absolute inset-0 rounded-full"
             animate={{
-              scale: [1, 1.15, 1],
-              opacity: [0.6, 0.3, 0.6],
+              scale: sosActive ? [1, 1.2, 1] : [1, 1.15, 1],
+              opacity: sosActive ? [0.8, 0.4, 0.8] : [0.6, 0.3, 0.6],
             }}
             transition={{
-              duration: 2,
+              duration: sosActive ? 1 : 2,
               repeat: Infinity,
               ease: "easeInOut",
               delay: 0.3,
             }}
             style={{
-              background: 'radial-gradient(circle, rgba(233, 30, 99, 0.5) 0%, rgba(233, 30, 99, 0) 60%)',
+              background: `radial-gradient(circle, rgba(233, 30, 99, ${sosActive ? '0.7' : '0.5'}) 0%, rgba(233, 30, 99, 0) 60%)`,
             }}
           />
           
           {/* SOS Button */}
           <Button
             onClick={handleSOSPress}
-            className="relative w-56 h-56 rounded-full bg-gradient-to-br from-[#E91E63] to-[#C2185B] hover:from-[#FF1744] hover:to-[#E91E63] text-white shadow-2xl animate-pulse-glow"
+            className={`relative w-56 h-56 rounded-full ${
+              sosActive
+                ? 'bg-gradient-to-br from-[#FF1744] to-[#F50057] hover:from-[#FF5252] hover:to-[#FF1744]'
+                : 'bg-gradient-to-br from-[#E91E63] to-[#C2185B] hover:from-[#FF1744] hover:to-[#E91E63]'
+            } text-white shadow-2xl ${sosActive ? 'animate-pulse' : 'animate-pulse-glow'}`}
+            aria-label={sosActive ? "Cancel Emergency Alert" : "Activate Emergency Alert"}
           >
-            <Shield style={{ width: '125px', height: '125px' }} strokeWidth={2.5} />
+            <div className="flex flex-col items-center gap-2">
+              <Shield style={{ width: '100px', height: '100px' }} strokeWidth={2.5} />
+              {sosCountdown !== null && (
+                <motion.div
+                  initial={{ scale: 0 }}
+                  animate={{ scale: 1 }}
+                  className="text-4xl font-bold"
+                >
+                  {sosCountdown}
+                </motion.div>
+              )}
+              {sosActive && <span className="text-sm font-semibold">TAP TO CANCEL</span>}
+            </div>
           </Button>
         </motion.div>
       </div>
