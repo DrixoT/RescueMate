@@ -1,13 +1,12 @@
 package com.rescuemate.ui.screens
 
-import android.Manifest
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.sp
@@ -19,6 +18,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.android.gms.maps.model.CameraPosition
 import com.google.android.gms.maps.model.LatLng
 import com.google.maps.android.compose.*
@@ -26,8 +26,8 @@ import com.rescuemate.R
 import com.rescuemate.ui.theme.*
 import com.rescuemate.utils.LocationHelper
 import com.rescuemate.utils.rememberLocationPermissionsState
-import kotlinx.coroutines.launch
 
+@OptIn(ExperimentalPermissionsApi::class)
 @Composable
 fun LiveLocationScreen(
     onBack: () -> Unit
@@ -38,7 +38,6 @@ fun LiveLocationScreen(
     var isSharing by remember { mutableStateOf(false) }
     var currentLocation by remember { mutableStateOf<LatLng?>(null) }
     var locationAddress by remember { mutableStateOf("") }
-    val scope = rememberCoroutineScope()
 
     LaunchedEffect(Unit) {
         if (locationPermissionsState.allPermissionsGranted) {
@@ -127,7 +126,7 @@ fun LiveLocationScreen(
                                 .scale(scale)
                                 .background(
                                     color = Color.White,
-                                    shape = androidx.compose.foundation.shape.CircleShape
+                                    shape = CircleShape
                                 )
                         )
                         Text(

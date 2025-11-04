@@ -1,7 +1,5 @@
 package com.rescuemate.ui.screens
 
-import android.bluetooth.BluetoothAdapter
-import android.os.Build
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -16,12 +14,15 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.rescuemate.R
 import com.rescuemate.ui.theme.*
 import com.rescuemate.utils.BluetoothHelper
 import com.rescuemate.utils.BluetoothDeviceInfo
 import com.rescuemate.utils.rememberBluetoothPermissionsState
+import com.google.accompanist.permissions.ExperimentalPermissionsApi
 
+@OptIn(ExperimentalPermissionsApi::class)
 @Composable
 fun BluetoothPairingScreen(
     onBack: () -> Unit

@@ -1,20 +1,18 @@
 package com.rescuemate.ui.screens
 
-import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.rescuemate.R
 import com.rescuemate.ui.theme.*
 
@@ -104,7 +102,7 @@ fun SignInScreen(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                HorizontalDivider(
+                Divider(
                     modifier = Modifier.weight(1f),
                     color = CosmicBorder
                 )
@@ -115,7 +113,7 @@ fun SignInScreen(
                     color = CosmicTextSecondary,
                     letterSpacing = 2.sp
                 )
-                HorizontalDivider(
+                Divider(
                     modifier = Modifier.weight(1f),
                     color = CosmicBorder
                 )

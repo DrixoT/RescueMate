@@ -1,13 +1,16 @@
 package com.rescuemate.utils
 
 import android.Manifest
+import android.annotation.SuppressLint
 import android.content.Context
 import android.content.pm.PackageManager
 import android.location.Location
-import android.os.Build
 import androidx.core.content.ContextCompat
 import com.google.android.gms.location.*
-import kotlinx.coroutines.tasks.await
+import com.google.android.gms.tasks.Task
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
 
 class LocationHelper(private val context: Context) {
     private val fusedLocationClient: FusedLocationProviderClient =
@@ -24,24 +27,39 @@ class LocationHelper(private val context: Context) {
                 ) == PackageManager.PERMISSION_GRANTED
     }
 
+    @SuppressLint("MissingPermission")
     suspend fun getCurrentLocation(): Location? {
         if (!hasLocationPermission()) {
             return null
         }
 
         return try {
-            fusedLocationClient.lastLocation.await()
-        } catch (e: Exception) {
+            fusedLocationClient.lastLocation.awaitTask()
+        } catch (_: Exception) {
             null
         }
     }
 
+    @Suppress("unused")
     fun createLocationRequest(): LocationRequest {
         return LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 10000)
             .setWaitForAccurateLocation(false)
             .setMinUpdateIntervalMillis(5000)
             .setMaxUpdateDelayMillis(10000)
             .build()
+    }
+}
+
+// Extension function to convert Task to suspend function
+private suspend fun <T> Task<T>.awaitTask(): T? = suspendCancellableCoroutine { continuation ->
+    addOnSuccessListener { result ->
+        continuation.resume(result)
+    }
+    addOnFailureListener { exception ->
+        continuation.resumeWithException(exception)
+    }
+    addOnCanceledListener {
+        continuation.cancel()
     }
 }
 

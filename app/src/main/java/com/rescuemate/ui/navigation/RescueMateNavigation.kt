@@ -5,7 +5,15 @@ import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
-import com.rescuemate.ui.screens.*
+import com.rescuemate.ui.screens.OnboardingScreen
+import com.rescuemate.ui.screens.SignInScreen
+import com.rescuemate.ui.screens.SignUpScreen
+import com.rescuemate.ui.screens.HomeDashboard
+import com.rescuemate.ui.screens.EmergencyContactsScreen
+import com.rescuemate.ui.screens.AddContactScreen
+import com.rescuemate.ui.screens.LiveLocationScreen
+import com.rescuemate.ui.screens.SettingsScreen
+import com.rescuemate.ui.screens.BluetoothPairingScreen as BTPairingScreen
 
 @Composable
 fun RescueMateNavigation(
@@ -105,7 +113,7 @@ fun RescueMateNavigation(
         }
         
         composable(Screen.Bluetooth.route) {
-            BluetoothPairingScreen(
+            BTPairingScreen(
                 onBack = {
                     navController.popBackStack()
                 }

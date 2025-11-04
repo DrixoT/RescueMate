@@ -14,6 +14,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.rescuemate.R
 import com.rescuemate.ui.theme.*
 
@@ -108,7 +109,7 @@ fun SettingsScreen(
                                 checked = autoSendAlert,
                                 onCheckedChange = { autoSendAlert = it }
                             )
-                            HorizontalDivider(color = CosmicBorder)
+                            Divider(color = CosmicBorder)
                             SettingItem(
                                 icon = Icons.Default.LocationOn,
                                 title = stringResource(R.string.location_tracking),
@@ -116,7 +117,7 @@ fun SettingsScreen(
                                 checked = locationTracking,
                                 onCheckedChange = { locationTracking = it }
                             )
-                            HorizontalDivider(color = CosmicBorder)
+                            Divider(color = CosmicBorder)
                             SettingItem(
                                 icon = Icons.Default.Shield,
                                 title = stringResource(R.string.sound_alerts),
@@ -338,13 +339,18 @@ fun SettingButton(
     description: String,
     onClick: () -> Unit
 ) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(16.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween
+    Surface(
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth(),
+        color = Color.Transparent
     ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
         Row(
             modifier = Modifier.weight(1f),
             verticalAlignment = Alignment.CenterVertically,
@@ -381,6 +387,7 @@ fun SettingButton(
             contentDescription = null,
             tint = CosmicTextSecondary
         )
+        }
     }
 }
 
