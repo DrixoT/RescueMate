@@ -21,7 +21,8 @@ import com.rescuemate.ui.theme.*
 @Composable
 fun SettingsScreen(
     onBack: () -> Unit,
-    onNavigateToBluetooth: () -> Unit
+    onNavigateToBluetooth: () -> Unit,
+    onNavigateToVoiceAI: () -> Unit = {}
 ) {
     var autoSendAlert by remember { mutableStateOf(true) }
     var locationTracking by remember { mutableStateOf(true) }
@@ -152,7 +153,7 @@ fun SettingsScreen(
                             icon = Icons.Default.Mic,
                             title = stringResource(R.string.setup_voice_ai),
                             description = stringResource(R.string.setup_voice_ai_desc),
-                            onClick = { /* Handle Voice AI setup */ }
+                            onClick = onNavigateToVoiceAI
                         )
                     }
                 }

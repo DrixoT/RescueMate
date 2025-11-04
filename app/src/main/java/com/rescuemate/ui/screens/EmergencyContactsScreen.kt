@@ -8,11 +8,13 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.rescuemate.R
@@ -31,14 +33,8 @@ fun EmergencyContactsScreen(
     onBack: () -> Unit,
     onAddContact: () -> Unit
 ) {
-    val contacts = remember {
-        listOf(
-            Contact(1, "Sarah Mitchell", "Primary Contact", "+1 (555) 0123", true),
-            Contact(2, "Dr. James Chen", "Emergency Physician", "+1 (555) 0456", false),
-            Contact(3, "Alex Johnson", "Family", "+1 (555) 0789", false),
-            Contact(4, "911 Emergency", "Emergency Services", "911", false)
-        )
-    }
+    // Start with empty list - user must add contacts
+    val contacts = remember { mutableStateListOf<Contact>() }
 
     Box(
         modifier = Modifier
@@ -92,46 +88,154 @@ fun EmergencyContactsScreen(
                 }
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(24.dp))
 
-            // Contacts List
-            LazyColumn(
-                verticalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
-                itemsIndexed(contacts) { index, contact ->
-                    ContactCard(
-                        contact = contact,
-                        modifier = Modifier.fillMaxWidth()
+            // Show empty state or contacts list
+            if (contacts.isEmpty()) {
+                EmptyContactsState(onAddContact = onAddContact)
+            } else {
+                // Contacts List
+                LazyColumn(
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    itemsIndexed(contacts) { index, contact ->
+                        ContactCard(
+                            contact = contact,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // Info Note
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(
+                        containerColor = CosmicCardHover.copy(alpha = 0.5f)
+                    ),
+                    border = CardDefaults.outlinedCardBorder().copy(
+                        brush = Brush.linearGradient(listOf(CosmicBorder, CosmicBorder))
                     )
+                ) {
+                    Column(
+                        modifier = Modifier.padding(16.dp)
+                    ) {
+                        Text(
+                            text = stringResource(R.string.auto_alert),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = CosmicTextSecondary,
+                            letterSpacing = 2.sp
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = stringResource(R.string.auto_alert_message),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = CosmicTextPrimary
+                        )
+                    }
                 }
             }
+        }
+    }
+}
 
-            Spacer(modifier = Modifier.height(16.dp))
+@Composable
+fun EmptyContactsState(
+    onAddContact: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(32.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        // Empty state icon
+        Icon(
+            imageVector = Icons.Default.PersonAddAlt,
+            contentDescription = null,
+            modifier = Modifier.size(120.dp),
+            tint = CosmicTextSecondary.copy(alpha = 0.3f)
+        )
 
-            // Info Note
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(
-                    containerColor = CosmicCardHover.copy(alpha = 0.5f)
-                ),
-                border = CardDefaults.outlinedCardBorder().copy(
-                    brush = Brush.linearGradient(listOf(CosmicBorder, CosmicBorder))
-                )
+        Spacer(modifier = Modifier.height(32.dp))
+
+        Text(
+            text = "No Emergency Contacts",
+            style = MaterialTheme.typography.headlineSmall,
+            color = CosmicTextPrimary,
+            textAlign = TextAlign.Center
+        )
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        Text(
+            text = "Add trusted contacts who will be notified\nin case of an emergency",
+            style = MaterialTheme.typography.bodyLarge,
+            color = CosmicTextSecondary,
+            textAlign = TextAlign.Center,
+            lineHeight = 24.sp
+        )
+
+        Spacer(modifier = Modifier.height(40.dp))
+
+        Button(
+            onClick = onAddContact,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(56.dp),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = CosmicPrimary
+            )
+        ) {
+            Icon(
+                imageVector = Icons.Default.Add,
+                contentDescription = null,
+                modifier = Modifier.size(20.dp)
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(
+                text = "Add Your First Contact",
+                style = MaterialTheme.typography.labelLarge
+            )
+        }
+
+        Spacer(modifier = Modifier.height(24.dp))
+
+        // Info card
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(
+                containerColor = CosmicCardHover.copy(alpha = 0.5f)
+            ),
+            border = CardDefaults.outlinedCardBorder().copy(
+                brush = Brush.linearGradient(listOf(CosmicBorder, CosmicBorder))
+            )
+        ) {
+            Row(
+                modifier = Modifier.padding(16.dp),
+                verticalAlignment = Alignment.Top,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                Column(
-                    modifier = Modifier.padding(16.dp)
-                ) {
+                Icon(
+                    imageVector = Icons.Default.Info,
+                    contentDescription = null,
+                    modifier = Modifier.size(20.dp),
+                    tint = CosmicPrimary
+                )
+                Column {
                     Text(
-                        text = stringResource(R.string.auto_alert),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = CosmicTextSecondary,
-                        letterSpacing = 2.sp
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        text = stringResource(R.string.auto_alert_message),
-                        style = MaterialTheme.typography.bodySmall,
+                        text = "Emergency Services (911)",
+                        style = MaterialTheme.typography.titleSmall,
                         color = CosmicTextPrimary
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = "911 is always available as your default emergency contact",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = CosmicTextSecondary,
+                        lineHeight = 18.sp
                     )
                 }
             }

@@ -2,6 +2,11 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
+    <!-- Hardware Features Declaration -->
+    <uses-feature android:name="android.hardware.bluetooth" android:required="false" />
+    <uses-feature android:name="android.hardware.bluetooth_le" android:required="false" />
+    <uses-feature android:name="android.hardware.telephony" android:required="false" />
+
     <!-- Location Permissions -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
@@ -17,12 +22,20 @@
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" 
         tools:targetApi="s" />
     
+    <!-- Contacts Permission -->
+    <uses-permission android:name="android.permission.READ_CONTACTS" />
+    <uses-permission android:name="android.permission.WRITE_CONTACTS" />
+
+    <!-- Phone Call Permission -->
+    <uses-permission android:name="android.permission.CALL_PHONE" />
+
+    <!-- SMS Permission for messaging -->
+    <uses-permission android:name="android.permission.SEND_SMS" />
+
     <!-- Network Permission for Maps -->
     <uses-permission android:name="android.permission.INTERNET" />
-    
-    <!-- Required for Bluetooth on older devices -->
-    <uses-feature android:name="android.hardware.bluetooth" android:required="false" />
-    <uses-feature android:name="android.hardware.bluetooth_le" android:required="false" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
 
     <application
         android:allowBackup="true"

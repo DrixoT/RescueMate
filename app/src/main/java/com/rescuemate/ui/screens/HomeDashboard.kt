@@ -1,6 +1,7 @@
 package com.rescuemate.ui.screens
 
 import androidx.compose.animation.core.*
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
@@ -14,6 +15,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -74,10 +79,11 @@ fun HomeDashboard(
 
             Spacer(modifier = Modifier.height(48.dp))
 
-            // Status Indicators
+            // Status Indicators + User Profile
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
                 StatusBadge(
                     icon = Icons.Default.LocationOn,
@@ -87,18 +93,49 @@ fun HomeDashboard(
                     icon = Icons.Default.Wifi,
                     text = stringResource(R.string.network_secure)
                 )
+                Spacer(modifier = Modifier.weight(1f))
+
+                // User Profile Icon
+                IconButton(
+                    onClick = { onNavigate("profile") },
+                    modifier = Modifier.size(40.dp)
+                ) {
+                    Surface(
+                        modifier = Modifier.size(40.dp),
+                        shape = androidx.compose.foundation.shape.CircleShape,
+                        color = CosmicCard,
+                        border = androidx.compose.foundation.BorderStroke(
+                            1.dp,
+                            CosmicBorder
+                        )
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = Icons.Default.Person,
+                                contentDescription = "Profile",
+                                tint = CosmicTextPrimary,
+                                modifier = Modifier.size(24.dp)
+                            )
+                        }
+                    }
+                }
             }
 
             Spacer(modifier = Modifier.weight(1f))
 
-            // Main SOS Button
-            SOSButton(
-                onClick = {
-                    // Handle SOS activation
-                }
-            )
+            // Main SOS Button - Centered
+            Box(
+                modifier = Modifier.fillMaxWidth(),
+                contentAlignment = Alignment.Center
+            ) {
+                SOSButton(
+                    onClick = {
+                        // Handle SOS activation
+                    }
+                )
+            }
 
-            Spacer(modifier = Modifier.height(48.dp))
+            Spacer(modifier = Modifier.weight(1f))
 
             // Quick Action Buttons
             Row(
@@ -267,12 +304,52 @@ fun SOSButton(
                     ),
                 contentAlignment = Alignment.Center
             ) {
-                Icon(
-                    imageVector = Icons.Default.Shield,
-                    contentDescription = "SOS",
-                    modifier = Modifier.size(125.dp),
-                    tint = Color.White
-                )
+                // Draw outlined shield instead of filled icon
+                Canvas(
+                    modifier = Modifier.size(125.dp)
+                ) {
+                    val shieldPath = Path().apply {
+                        // Start at top center
+                        moveTo(size.width * 0.5f, size.height * 0.05f)
+
+                        // Top right
+                        lineTo(size.width * 0.85f, size.height * 0.2f)
+
+                        // Right side down
+                        lineTo(size.width * 0.85f, size.height * 0.55f)
+
+                        // Curve to bottom point
+                        cubicTo(
+                            size.width * 0.85f, size.height * 0.75f,
+                            size.width * 0.65f, size.height * 0.92f,
+                            size.width * 0.5f, size.height * 0.95f
+                        )
+
+                        // Curve from bottom to left
+                        cubicTo(
+                            size.width * 0.35f, size.height * 0.92f,
+                            size.width * 0.15f, size.height * 0.75f,
+                            size.width * 0.15f, size.height * 0.55f
+                        )
+
+                        // Left side up
+                        lineTo(size.width * 0.15f, size.height * 0.2f)
+
+                        // Close path
+                        close()
+                    }
+
+                    // Draw thick outline
+                    drawPath(
+                        path = shieldPath,
+                        color = Color.White,
+                        style = Stroke(
+                            width = 10f,
+                            cap = StrokeCap.Round,
+                            join = StrokeJoin.Round
+                        )
+                    )
+                }
             }
         }
     }

@@ -1,6 +1,7 @@
 package com.rescuemate.ui.screens
 
 import androidx.compose.animation.core.*
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
@@ -12,6 +13,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -56,19 +62,42 @@ fun OnboardingScreen(
         ) {
             Spacer(modifier = Modifier.weight(1f))
             
-            // Logo Icon
+            // Logo Icon - Outlined Shield
             Box(
                 modifier = Modifier
-                    .size(96.dp)
+                    .size(120.dp)
                     .scale(scale),
                 contentAlignment = Alignment.Center
             ) {
-                Icon(
-                    imageVector = Icons.Default.Shield,
-                    contentDescription = null,
-                    modifier = Modifier.size(96.dp),
-                    tint = CosmicPrimary
-                )
+                Canvas(modifier = Modifier.size(96.dp)) {
+                    val shieldPath = Path().apply {
+                        moveTo(size.width * 0.5f, size.height * 0.05f)
+                        lineTo(size.width * 0.85f, size.height * 0.2f)
+                        lineTo(size.width * 0.85f, size.height * 0.55f)
+                        cubicTo(
+                            size.width * 0.85f, size.height * 0.75f,
+                            size.width * 0.65f, size.height * 0.92f,
+                            size.width * 0.5f, size.height * 0.95f
+                        )
+                        cubicTo(
+                            size.width * 0.35f, size.height * 0.92f,
+                            size.width * 0.15f, size.height * 0.75f,
+                            size.width * 0.15f, size.height * 0.55f
+                        )
+                        lineTo(size.width * 0.15f, size.height * 0.2f)
+                        close()
+                    }
+
+                    drawPath(
+                        path = shieldPath,
+                        color = Color(0xFFE91E63),
+                        style = Stroke(
+                            width = 8f,
+                            cap = StrokeCap.Round,
+                            join = StrokeJoin.Round
+                        )
+                    )
+                }
             }
             
             Spacer(modifier = Modifier.height(32.dp))

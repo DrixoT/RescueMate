@@ -1,5 +1,6 @@
 package com.rescuemate.ui.screens
 
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
@@ -9,6 +10,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -19,7 +25,8 @@ import com.rescuemate.ui.theme.*
 @Composable
 fun SignInScreen(
     onSignIn: () -> Unit,
-    onSignUp: () -> Unit
+    onSignUp: () -> Unit,
+    onEmailLogin: () -> Unit = {}
 ) {
     Box(
         modifier = Modifier
@@ -41,14 +48,37 @@ fun SignInScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
-            // Logo
-            Icon(
-                imageVector = Icons.Default.Shield,
-                contentDescription = null,
-                modifier = Modifier.size(64.dp),
-                tint = CosmicPrimary
-            )
-            
+            // Logo - Outlined Shield
+            Canvas(modifier = Modifier.size(64.dp)) {
+                val shieldPath = Path().apply {
+                    moveTo(size.width * 0.5f, size.height * 0.05f)
+                    lineTo(size.width * 0.85f, size.height * 0.2f)
+                    lineTo(size.width * 0.85f, size.height * 0.55f)
+                    cubicTo(
+                        size.width * 0.85f, size.height * 0.75f,
+                        size.width * 0.65f, size.height * 0.92f,
+                        size.width * 0.5f, size.height * 0.95f
+                    )
+                    cubicTo(
+                        size.width * 0.35f, size.height * 0.92f,
+                        size.width * 0.15f, size.height * 0.75f,
+                        size.width * 0.15f, size.height * 0.55f
+                    )
+                    lineTo(size.width * 0.15f, size.height * 0.2f)
+                    close()
+                }
+
+                drawPath(
+                    path = shieldPath,
+                    color = Color(0xFFE91E63),
+                    style = Stroke(
+                        width = 6f,
+                        cap = StrokeCap.Round,
+                        join = StrokeJoin.Round
+                    )
+                )
+            }
+
             Spacer(modifier = Modifier.height(16.dp))
             
             Text(
@@ -75,23 +105,23 @@ fun SignInScreen(
             ) {
                 SignInButton(
                     text = stringResource(R.string.continue_with_google),
-                    icon = Icons.Default.Person,
-                    onClick = onSignIn
+                    icon = Icons.Default.Login, // TODO: Replace with Google logo
+                    onClick = onSignIn // Google Sign In
                 )
                 SignInButton(
                     text = stringResource(R.string.continue_with_apple),
-                    icon = Icons.Default.Phone,
-                    onClick = onSignIn
+                    icon = Icons.Default.PhoneIphone, // Apple icon alternative
+                    onClick = onSignIn // Apple Sign In
                 )
                 SignInButton(
                     text = stringResource(R.string.continue_with_phone),
                     icon = Icons.Default.Phone,
-                    onClick = onSignIn
+                    onClick = onSignIn // Phone Sign In
                 )
                 SignInButton(
                     text = stringResource(R.string.continue_with_email),
-                    icon = Icons.Default.Mail,
-                    onClick = onSignIn
+                    icon = Icons.Default.Email,
+                    onClick = onEmailLogin // Navigate to email login screen
                 )
             }
             

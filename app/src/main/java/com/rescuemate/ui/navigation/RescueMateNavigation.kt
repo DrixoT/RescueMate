@@ -8,11 +8,15 @@ import androidx.navigation.compose.rememberNavController
 import com.rescuemate.ui.screens.OnboardingScreen
 import com.rescuemate.ui.screens.SignInScreen
 import com.rescuemate.ui.screens.SignUpScreen
+import com.rescuemate.ui.screens.EmailLoginScreen
 import com.rescuemate.ui.screens.HomeDashboard
 import com.rescuemate.ui.screens.EmergencyContactsScreen
 import com.rescuemate.ui.screens.AddContactScreen
 import com.rescuemate.ui.screens.LiveLocationScreen
 import com.rescuemate.ui.screens.SettingsScreen
+import com.rescuemate.ui.screens.UserProfileScreen
+import com.rescuemate.ui.screens.VoiceAISetupScreen
+import com.rescuemate.ui.screens.PermissionRequestScreen
 import com.rescuemate.ui.screens.BluetoothPairingScreen as BTPairingScreen
 
 @Composable
@@ -42,6 +46,9 @@ fun RescueMateNavigation(
                 },
                 onSignUp = {
                     navController.navigate(Screen.SignUp.route)
+                },
+                onEmailLogin = {
+                    navController.navigate(Screen.EmailLogin.route)
                 }
             )
         }
@@ -66,6 +73,8 @@ fun RescueMateNavigation(
                         "contacts" -> navController.navigate(Screen.Contacts.route)
                         "location" -> navController.navigate(Screen.Location.route)
                         "settings" -> navController.navigate(Screen.Settings.route)
+                        "profile" -> navController.navigate(Screen.Profile.route)
+                        "voiceAI" -> navController.navigate(Screen.VoiceAI.route)
                     }
                 }
             )
@@ -108,6 +117,9 @@ fun RescueMateNavigation(
                 },
                 onNavigateToBluetooth = {
                     navController.navigate(Screen.Bluetooth.route)
+                },
+                onNavigateToVoiceAI = {
+                    navController.navigate(Screen.VoiceAI.route)
                 }
             )
         }
@@ -119,6 +131,50 @@ fun RescueMateNavigation(
                 }
             )
         }
+
+        composable(Screen.EmailLogin.route) {
+            EmailLoginScreen(
+                onBack = {
+                    navController.popBackStack()
+                },
+                onLogin = {
+                    navController.navigate(Screen.Home.route) {
+                        popUpTo(Screen.SignIn.route) { inclusive = true }
+                    }
+                },
+                onSignUp = {
+                    navController.navigate(Screen.SignUp.route)
+                }
+            )
+        }
+
+        composable(Screen.Profile.route) {
+            UserProfileScreen(
+                onBack = {
+                    navController.popBackStack()
+                }
+            )
+        }
+
+        composable(Screen.VoiceAI.route) {
+            VoiceAISetupScreen(
+                onBack = {
+                    navController.popBackStack()
+                },
+                onComplete = {
+                    navController.popBackStack()
+                }
+            )
+        }
+
+        composable(Screen.PermissionRequest.route) {
+            PermissionRequestScreen(
+                onPermissionsGranted = {
+                    navController.navigate(Screen.Home.route) {
+                        popUpTo(Screen.PermissionRequest.route) { inclusive = true }
+                    }
+                }
+            )
+        }
     }
 }
-

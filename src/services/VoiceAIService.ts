@@ -35,7 +35,7 @@ interface CallStatus {
 
 export class VoiceAIService {
   private backendUrl: string;
-  private voiceId = "JBFqnCBsd6RMkjVDRZzb"; // ElevenLabs default voice
+  private voiceId = "scOwDtmlUjD3prqpp97I"; // ElevenLabs voice: Sam (default)
   private callStatus: CallStatus = {
     isActive: false,
     stage: 'idle',
@@ -45,8 +45,28 @@ export class VoiceAIService {
   private statusCallback?: (status: CallStatus) => void;
   private audioElement?: HTMLAudioElement;
 
-  constructor(backendUrl: string = 'http://localhost:3000') {
-    this.backendUrl = backendUrl;
+  constructor(backendUrl?: string, voiceId?: string) {
+    const envUrl = (typeof process !== 'undefined' && process.env.REACT_APP_BACKEND_URL) ? process.env.REACT_APP_BACKEND_URL : undefined;
+    this.backendUrl = backendUrl || envUrl;
+    if (!this.backendUrl) {
+      throw new Error('Backend URL is required. Pass backendUrl to initialize VoiceAIService or set REACT_APP_BACKEND_URL.');
+    }
+    if (voiceId) {
+      this.voiceId = voiceId;
+    }
+  }
+
+  // Set voice ID (Sam or Pete)
+  setVoiceId(voiceId: string) {
+    this.voiceId = voiceId;
+  }
+
+  // Get available voices
+  getAvailableVoices() {
+    return [
+      { id: 'scOwDtmlUjD3prqpp97I', name: 'Sam', description: 'Professional and clear' },
+      { id: 'ChO6kqkVouUn0s7HMunx', name: 'Pete', description: 'Calm and reassuring' }
+    ];
   }
 
   setStatusCallback(callback: (status: CallStatus) => void) {

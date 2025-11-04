@@ -38,15 +38,29 @@ fun LiveLocationScreen(
     var isSharing by remember { mutableStateOf(false) }
     var currentLocation by remember { mutableStateOf<LatLng?>(null) }
     var locationAddress by remember { mutableStateOf("") }
+    var isLoadingLocation by remember { mutableStateOf(false) }
 
-    LaunchedEffect(Unit) {
+    // Request permissions and get location
+    LaunchedEffect(locationPermissionsState.allPermissionsGranted) {
         if (locationPermissionsState.allPermissionsGranted) {
-            val location = locationHelper.getCurrentLocation()
-            location?.let {
-                currentLocation = LatLng(it.latitude, it.longitude)
-                locationAddress = "${it.latitude}° N, ${it.longitude}° W"
+            isLoadingLocation = true
+            try {
+                val location = locationHelper.getCurrentLocation()
+                location?.let {
+                    currentLocation = LatLng(it.latitude, it.longitude)
+                    locationAddress = String.format("%.4f° N, %.4f° E", it.latitude, it.longitude)
+                }
+            } catch (e: Exception) {
+                // Handle error
+            } finally {
+                isLoadingLocation = false
             }
-        } else {
+        }
+    }
+
+    // Request permissions on first load
+    LaunchedEffect(Unit) {
+        if (!locationPermissionsState.allPermissionsGranted) {
             locationPermissionsState.launchMultiplePermissionRequest()
         }
     }
@@ -156,85 +170,111 @@ fun LiveLocationScreen(
             Spacer(modifier = Modifier.height(16.dp))
 
             // Map Container
-            if (locationPermissionsState.allPermissionsGranted && currentLocation != null) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f)
-                        .background(
-                            color = CosmicCard,
-                            shape = RoundedCornerShape(16.dp)
-                        )
-                ) {
-                    GoogleMap(
-                        modifier = Modifier.fillMaxSize(),
-                        cameraPositionState = rememberCameraPositionState {
-                            position = CameraPosition.fromLatLngZoom(currentLocation!!, 15f)
-                        },
-                        properties = MapProperties(
-                            mapType = MapType.NORMAL,
-                            isMyLocationEnabled = true
-                        ),
-                        uiSettings = MapUiSettings(
-                            myLocationButtonEnabled = false,
-                            zoomControlsEnabled = false
-                        )
-                    ) {
-                        Marker(
-                            state = MarkerState(position = currentLocation!!),
-                            icon = com.google.android.gms.maps.model.BitmapDescriptorFactory.defaultMarker(
-                                com.google.android.gms.maps.model.BitmapDescriptorFactory.HUE_ROSE
-                            )
-                        )
-                    }
-
-                    // Coordinates Overlay
-                    Card(
-                        modifier = Modifier
-                            .align(Alignment.TopStart)
-                            .padding(16.dp),
-                        colors = CardDefaults.cardColors(
-                            containerColor = CosmicCard.copy(alpha = 0.9f)
-                        ),
-                        border = CardDefaults.outlinedCardBorder().copy(
-                            brush = Brush.linearGradient(listOf(CosmicBorder, CosmicBorder))
-                        )
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(12.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+                    .background(
+                        color = CosmicCard,
+                        shape = RoundedCornerShape(16.dp)
+                    )
+            ) {
+                when {
+                    !locationPermissionsState.allPermissionsGranted -> {
+                        // Permission not granted state
+                        Column(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(24.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center
                         ) {
                             Icon(
-                                imageVector = Icons.Default.LocationOn,
+                                imageVector = Icons.Default.LocationOff,
                                 contentDescription = null,
-                                modifier = Modifier.size(16.dp),
-                                tint = CosmicPrimary
+                                modifier = Modifier.size(64.dp),
+                                tint = CosmicTextSecondary.copy(alpha = 0.5f)
                             )
-                            Column {
-                                Text(
-                                    text = stringResource(R.string.current_location),
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = CosmicTextSecondary,
-                                    letterSpacing = 1.5.sp
+                            Spacer(modifier = Modifier.height(16.dp))
+                            Text(
+                                text = "Location Permission Required",
+                                style = MaterialTheme.typography.titleMedium,
+                                color = CosmicTextPrimary,
+                                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                text = "Enable location access to view and share your real-time position",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = CosmicTextSecondary,
+                                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                            )
+                            Spacer(modifier = Modifier.height(24.dp))
+                            Button(
+                                onClick = {
+                                    locationPermissionsState.launchMultiplePermissionRequest()
+                                },
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = CosmicPrimary
                                 )
-                                Text(
-                                    text = locationAddress,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = CosmicTextPrimary
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.LocationOn,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp)
                                 )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("Grant Location Permission")
                             }
                         }
                     }
+                    isLoadingLocation -> {
+                        // Loading state
+                        Column(
+                            modifier = Modifier.fillMaxSize(),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center
+                        ) {
+                            CircularProgressIndicator(color = CosmicPrimary)
+                            Spacer(modifier = Modifier.height(16.dp))
+                            Text(
+                                text = "Getting your location...",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = CosmicTextSecondary
+                            )
+                        }
+                    }
+                    currentLocation != null -> {
+                        // Map display
+                        GoogleMap(
+                            modifier = Modifier.fillMaxSize(),
+                            cameraPositionState = rememberCameraPositionState {
+                                position = CameraPosition.fromLatLngZoom(currentLocation!!, 15f)
+                            },
+                            properties = MapProperties(
+                                mapType = MapType.NORMAL,
+                                isMyLocationEnabled = true
+                            ),
+                            uiSettings = MapUiSettings(
+                                myLocationButtonEnabled = true,
+                                zoomControlsEnabled = true,
+                                compassEnabled = true
+                            )
+                        ) {
+                            Marker(
+                                state = MarkerState(position = currentLocation!!),
+                                title = "You are here",
+                                snippet = locationAddress
+                            )
+                        }
 
-                    // Last Updated (when sharing)
-                    if (isSharing) {
+                        // Coordinates Overlay
                         Card(
                             modifier = Modifier
-                                .align(Alignment.BottomStart)
+                                .align(Alignment.TopStart)
                                 .padding(16.dp),
                             colors = CardDefaults.cardColors(
-                                containerColor = CosmicCard.copy(alpha = 0.9f)
+                                containerColor = CosmicCard.copy(alpha = 0.95f)
                             ),
                             border = CardDefaults.outlinedCardBorder().copy(
                                 brush = Brush.linearGradient(listOf(CosmicBorder, CosmicBorder))
@@ -246,56 +286,79 @@ fun LiveLocationScreen(
                                 horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
                                 Icon(
-                                    imageVector = Icons.Default.Schedule,
+                                    imageVector = Icons.Default.MyLocation,
                                     contentDescription = null,
-                                    modifier = Modifier.size(14.dp),
-                                    tint = CosmicTextSecondary
+                                    modifier = Modifier.size(16.dp),
+                                    tint = CosmicPrimary
                                 )
-                                Text(
-                                    text = stringResource(R.string.last_updated, "Just now", "High"),
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = CosmicTextSecondary
+                                Column {
+                                    Text(
+                                        text = "Your Location",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = CosmicTextSecondary,
+                                        letterSpacing = 1.5.sp
+                                    )
+                                    Text(
+                                        text = locationAddress,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = CosmicTextPrimary
+                                    )
+                                }
+                            }
+                        }
+
+                        // Last Updated overlay (when sharing)
+                        if (isSharing) {
+                            Card(
+                                modifier = Modifier
+                                    .align(Alignment.BottomStart)
+                                    .padding(16.dp),
+                                colors = CardDefaults.cardColors(
+                                    containerColor = CosmicCard.copy(alpha = 0.95f)
+                                ),
+                                border = CardDefaults.outlinedCardBorder().copy(
+                                    brush = Brush.linearGradient(listOf(CosmicBorder, CosmicBorder))
                                 )
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(12.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Schedule,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(14.dp),
+                                        tint = CosmicPrimary
+                                    )
+                                    Text(
+                                        text = "Updated just now • High accuracy",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = CosmicTextPrimary
+                                    )
+                                }
                             }
                         }
                     }
-                }
-            } else {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f)
-                        .background(
-                            color = CosmicCard,
-                            shape = RoundedCornerShape(16.dp)
-                        ),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(16.dp)
-                    ) {
+                    else -> {
+                        // Error state
+                        Column(
+                            modifier = Modifier.fillMaxSize(),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center
+                        ) {
                             Icon(
-                                imageVector = Icons.Default.LocationOn,
+                                imageVector = Icons.Default.LocationOff,
                                 contentDescription = null,
                                 modifier = Modifier.size(48.dp),
                                 tint = CosmicTextSecondary
                             )
-                        Text(
-                            text = stringResource(R.string.location_permission_required),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = CosmicTextSecondary,
-                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                        )
-                        Button(
-                            onClick = {
-                                locationPermissionsState.launchMultiplePermissionRequest()
-                            },
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = CosmicPrimary
+                            Spacer(modifier = Modifier.height(16.dp))
+                            Text(
+                                text = "Unable to get location",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = CosmicTextSecondary
                             )
-                        ) {
-                            Text("Grant Permission")
                         }
                     }
                 }
