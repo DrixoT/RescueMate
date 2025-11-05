@@ -1,6 +1,7 @@
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
+    id("kotlin-parcelize")
 }
 
 android {
@@ -77,11 +78,19 @@ dependencies {
     
     // Permissions
     implementation("com.google.accompanist:accompanist-permissions:0.32.0")
-     // HTTP Client for ElevenLabs API
+
+    // HTTP Client for ElevenLabs API & Emergency Backend
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
 
     // JSON parsing
     implementation("org.json:json:20231013")
+
+    // Coroutines for async operations
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.7.3")
+
+    // Image Loading (Coil)
+    implementation("io.coil-kt:coil-compose:2.4.0")
 
     // Testing
     testImplementation("junit:junit:4.13.2")
