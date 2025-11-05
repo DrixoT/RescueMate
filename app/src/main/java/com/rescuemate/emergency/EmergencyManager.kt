@@ -4,6 +4,7 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
 import android.os.Build
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.rescuemate.R
 import com.rescuemate.emergency.data.*
@@ -11,6 +12,7 @@ import com.rescuemate.emergency.data.database.EmergencyDatabaseHelper
 import com.rescuemate.emergency.health.HealthMonitoringService
 import com.rescuemate.emergency.location.EmergencyLocationService
 import com.rescuemate.emergency.twilio.TwilioEmergencyService
+import com.rescuemate.utils.NetworkMonitor
 import kotlinx.coroutines.*
 
 /**
@@ -24,11 +26,15 @@ class EmergencyManager(private val context: Context) {
     private val locationService = EmergencyLocationService(context)
     private val twilioService = TwilioEmergencyService(context)
     private val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+    private val networkMonitor = NetworkMonitor(context)
 
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
     private var currentEmergency: EmergencyEvent? = null
     private var phase1Timer: Job? = null
     private var phase2Timer: Job? = null
+    
+    // Queue for emergency events when network is unavailable
+    private val pendingEmergencyEvents = mutableListOf<EmergencyEvent>()
 
     // Callbacks
     private var onEmergencyTriggered: ((EmergencyEvent) -> Unit)? = null
@@ -38,6 +44,36 @@ class EmergencyManager(private val context: Context) {
 
     init {
         createNotificationChannels()
+        networkMonitor.startMonitoring()
+        
+        // Monitor network and process queued events when connection restored
+        scope.launch {
+            networkMonitor.isConnected.collect { isConnected ->
+                if (isConnected && pendingEmergencyEvents.isNotEmpty()) {
+                    Log.d("EmergencyManager", "🌐 Network restored, processing ${pendingEmergencyEvents.size} queued events")
+                    processQueuedEvents()
+                }
+            }
+        }
+    }
+    
+    /**
+     * Process queued emergency events when network is restored
+     */
+    private suspend fun processQueuedEvents() {
+        val eventsToProcess = pendingEmergencyEvents.toList()
+        pendingEmergencyEvents.clear()
+        
+        for (event in eventsToProcess) {
+            try {
+                Log.d("EmergencyManager", "📤 Processing queued event: ${event.id}")
+                notifyEmergencyContacts(event)
+            } catch (e: Exception) {
+                Log.e("EmergencyManager", "Error processing queued event", e)
+                // Re-queue if processing fails
+                pendingEmergencyEvents.add(event)
+            }
+        }
     }
 
     /**
@@ -49,6 +85,8 @@ class EmergencyManager(private val context: Context) {
         userInfo: UserInfo
     ): Result<EmergencyEvent> = withContext(Dispatchers.IO) {
         try {
+            Log.d("EmergencyManager", "🚨 Triggering health emergency for user: $userId")
+            
             // Get current location
             val locationResult = locationService.getCurrentLocation()
             val locationData = locationResult.getOrNull() ?: LocationData(
@@ -57,14 +95,19 @@ class EmergencyManager(private val context: Context) {
                 accuracy = 0f,
                 address = "Location unavailable"
             )
+            
+            Log.d("EmergencyManager", "📍 Location: ${locationData.address} (${locationData.latitude}, ${locationData.longitude})")
 
             // Get emergency contacts
             val contacts = database.getAllContacts()
             if (contacts.isEmpty()) {
+                Log.e("EmergencyManager", "❌ No emergency contacts configured")
                 return@withContext Result.failure(
                     Exception(EmergencyConstants.ERROR_NO_EMERGENCY_CONTACTS)
                 )
             }
+            
+            Log.d("EmergencyManager", "📞 Found ${contacts.size} emergency contacts")
 
             // Create emergency event
             val event = EmergencyEvent(
@@ -81,6 +124,8 @@ class EmergencyManager(private val context: Context) {
             // Save to database
             database.insertEmergencyEvent(event)
             currentEmergency = event
+            
+            Log.d("EmergencyManager", "✅ Emergency event created: ${event.id}")
 
             // Start Phase 1
             startPhase1(event)
@@ -88,7 +133,7 @@ class EmergencyManager(private val context: Context) {
             Result.success(event)
 
         } catch (e: Exception) {
-            e.printStackTrace()
+            Log.e("EmergencyManager", "❌ Error triggering health emergency", e)
             Result.failure(e)
         }
     }
@@ -154,9 +199,12 @@ class EmergencyManager(private val context: Context) {
      * Phase 1: User Response Check (60 seconds)
      */
     private fun startPhase1(event: EmergencyEvent) {
+        Log.d("EmergencyManager", "⏱️ Starting Phase 1: User Response Check (60s)")
+        
         val updatedEvent = event.copy(
             status = EmergencyConstants.EmergencyStatus.PHASE_1_USER_RESPONSE_CHECK,
-            currentPhase = 1
+            currentPhase = 1,
+            phase1StartTime = System.currentTimeMillis()
         )
         database.insertEmergencyEvent(updatedEvent)
         currentEmergency = updatedEvent
@@ -174,8 +222,11 @@ class EmergencyManager(private val context: Context) {
             // Check if user responded
             val current = currentEmergency
             if (current != null && current.id == event.id && !current.userResponded) {
+                Log.w("EmergencyManager", "⏰ Phase 1 timeout - User did not respond, escalating to Phase 2")
                 // User didn't respond - escalate to Phase 2
                 escalateToPhase2(current)
+            } else {
+                Log.d("EmergencyManager", "✅ User responded during Phase 1 - emergency cancelled")
             }
         }
     }
@@ -192,6 +243,8 @@ class EmergencyManager(private val context: Context) {
      * Phase 2: Emergency Contact Notification (5 minutes)
      */
     private fun startPhase2(event: EmergencyEvent) {
+        Log.d("EmergencyManager", "📞 Starting Phase 2: Emergency Contact Notification")
+        
         val updatedEvent = event.copy(
             status = EmergencyConstants.EmergencyStatus.PHASE_2_CONTACT_NOTIFICATION,
             currentPhase = 2,
@@ -208,7 +261,11 @@ class EmergencyManager(private val context: Context) {
 
         // Start calling emergency contacts
         scope.launch {
-            notifyEmergencyContacts(updatedEvent)
+            try {
+                notifyEmergencyContacts(updatedEvent)
+            } catch (e: Exception) {
+                Log.e("EmergencyManager", "❌ Error notifying emergency contacts", e)
+            }
         }
 
         // Start Phase 2 timer for Phase 3 escalation
@@ -221,9 +278,12 @@ class EmergencyManager(private val context: Context) {
                 !current.getSuccessfulContactResponses().any {
                     it.response == EmergencyConstants.ContactResponse.USER_FINE
                 }) {
+                Log.w("EmergencyManager", "⏰ Phase 2 timeout - No contact confirmed user safe, escalating to Phase 3")
                 // No confirmation - would escalate to Phase 3 (emergency services)
                 // Phase 3 is reserved for future implementation
                 escalateToPhase3(current)
+            } else {
+                Log.d("EmergencyManager", "✅ Contact confirmed user safe during Phase 2")
             }
         }
     }
@@ -232,17 +292,43 @@ class EmergencyManager(private val context: Context) {
      * Notify all emergency contacts
      */
     private suspend fun notifyEmergencyContacts(event: EmergencyEvent) = withContext(Dispatchers.IO) {
+        Log.d("EmergencyManager", "📞 Notifying ${event.emergencyContacts.size} emergency contacts")
+        
+        // Check network connectivity
+        if (!networkMonitor.checkConnection()) {
+            Log.w("EmergencyManager", "⚠️ No network connection, queueing emergency event")
+            pendingEmergencyEvents.add(event)
+            
+            // Try fallback SMS immediately (may work even without internet for local SMS)
+            sendFallbackSMS(event)
+            return@withContext
+        }
+        
         // Send initial alert to backend
         val alertResult = twilioService.sendEmergencyContactAlert(event)
         if (alertResult.isFailure) {
+            Log.w("EmergencyManager", "⚠️ Backend alert failed, using fallback SMS")
             // Fallback: try direct SMS
             sendFallbackSMS(event)
+        } else {
+            Log.d("EmergencyManager", "✅ Backend alert sent successfully")
         }
 
         // Call each contact sequentially
         val sortedContacts = event.emergencyContacts.sortedBy { it.priority }
+        
+        var successfulCalls = 0
+        var failedCalls = 0
 
         for (contact in sortedContacts) {
+            // Check if emergency was cancelled
+            if (currentEmergency?.userCancelled == true) {
+                Log.d("EmergencyManager", "🛑 Emergency cancelled, stopping contact notifications")
+                break
+            }
+            
+            Log.d("EmergencyManager", "📞 Contacting: ${contact.name} (${contact.phoneNumber})")
+
             // Voice call if preference allows
             if (contact.canReceiveVoiceCall()) {
                 val callResult = twilioService.callEmergencyContact(event, contact)
@@ -256,6 +342,14 @@ class EmergencyManager(private val context: Context) {
                     failureReason = callResult.exceptionOrNull()?.message,
                     callSid = callResult.getOrNull()?.callSid
                 )
+
+                if (callResult.isSuccess) {
+                    successfulCalls++
+                    Log.d("EmergencyManager", "✅ Voice call initiated to ${contact.name}")
+                } else {
+                    failedCalls++
+                    Log.w("EmergencyManager", "❌ Voice call failed to ${contact.name}: ${callResult.exceptionOrNull()?.message}")
+                }
 
                 // Record attempt
                 recordContactAttempt(event.id, attempt)
@@ -277,14 +371,17 @@ class EmergencyManager(private val context: Context) {
                     failureReason = smsResult.exceptionOrNull()?.message
                 )
 
+                if (smsResult.isSuccess) {
+                    Log.d("EmergencyManager", "✅ SMS sent to ${contact.name}")
+                } else {
+                    Log.w("EmergencyManager", "❌ SMS failed to ${contact.name}: ${smsResult.exceptionOrNull()?.message}")
+                }
+
                 recordContactAttempt(event.id, attempt)
             }
-
-            // Check if emergency was cancelled
-            if (currentEmergency?.userCancelled == true) {
-                break
-            }
         }
+        
+        Log.d("EmergencyManager", "📊 Contact notification summary: $successfulCalls successful, $failedCalls failed")
     }
 
     /**

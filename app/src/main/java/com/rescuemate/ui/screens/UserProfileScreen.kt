@@ -47,16 +47,105 @@ val commonAllergies = listOf(
 fun UserProfileScreen(
     onBack: () -> Unit
 ) {
-    var name by remember { mutableStateOf("") }
-    var age by remember { mutableStateOf("") }
-    var sex by remember { mutableStateOf("") }
-    var bloodType by remember { mutableStateOf("") }
-    var currentMedication by remember { mutableStateOf("") }
-    var allergies by remember { mutableStateOf("") }
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val userPrefs = remember { com.rescuemate.data.UserPreferences(context) }
+    val scope = rememberCoroutineScope()
+
+    // Load existing data
+    var name by remember { mutableStateOf(userPrefs.getUserName() ?: "") }
+    var dateOfBirth by remember { mutableStateOf(userPrefs.getDateOfBirth() ?: "") }
+    var age by remember { mutableStateOf(userPrefs.getUserAge() ?: "") }
+    var sex by remember { mutableStateOf(userPrefs.getUserGender() ?: "") }
+    var phone by remember { mutableStateOf(userPrefs.getUserPhone() ?: "") }
+    var bloodType by remember { mutableStateOf(userPrefs.getBloodType() ?: "") }
+    var medicalHistory by remember { mutableStateOf(userPrefs.getMedicalHistory() ?: "") }
+    var currentMedication by remember { mutableStateOf(userPrefs.getCurrentMedication() ?: "") }
+    var allergies by remember { mutableStateOf(userPrefs.getAllergies() ?: "") }
     var selectedConditions by remember { mutableStateOf(setOf<String>()) }
     var showConditionsDialog by remember { mutableStateOf(false) }
     var showMedicationDialog by remember { mutableStateOf(false) }
     var showAllergiesDialog by remember { mutableStateOf(false) }
+
+    // Calculate age from date of birth
+    fun calculateAge(dob: String): String {
+        return try {
+            val formatter = java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy")
+            val birthDate = java.time.LocalDate.parse(dob, formatter)
+            val currentAge = java.time.Period.between(birthDate, java.time.LocalDate.now()).years
+            currentAge.toString()
+        } catch (e: Exception) {
+            age
+        }
+    }
+
+    // Update age when date of birth changes
+    LaunchedEffect(dateOfBirth) {
+        if (dateOfBirth.isNotEmpty()) {
+            val calculatedAge = calculateAge(dateOfBirth)
+            if (calculatedAge.isNotEmpty()) {
+                age = calculatedAge
+            }
+        }
+    }
+
+    // Save function
+    fun saveProfile() {
+        try {
+            // Save basic profile
+            userPrefs.saveUserProfile(
+                name = name,
+                age = age,
+                gender = sex,
+                phone = phone
+            )
+
+            if (dateOfBirth.isNotEmpty()) {
+                userPrefs.saveDateOfBirth(dateOfBirth)
+            }
+
+            // Save medical info to UserPreferences
+            userPrefs.saveMedicalInfo(
+                medicalHistory = medicalHistory,
+                currentMedication = currentMedication,
+                allergies = allergies,
+                bloodType = bloodType
+            )
+            
+            // Also save to EmergencyDatabaseHelper for emergency events
+            val repository = com.rescuemate.data.repository.EmergencyRepository(context)
+            val userId = userPrefs.getUserId()
+            
+            // Parse medical history, medications, and allergies from text
+            val conditions = medicalHistory.split(",").map { it.trim() }.filter { it.isNotEmpty() }
+            val medications = currentMedication.split(",").map { 
+                com.rescuemate.emergency.data.Medication(
+                    name = it.trim(),
+                    dosage = "",
+                    frequency = ""
+                )
+            }.filter { it.name.isNotEmpty() }
+            val allergyList = allergies.split(",").map { it.trim() }.filter { it.isNotEmpty() }
+            
+            val medicalInfo = com.rescuemate.emergency.data.MedicalInfo(
+                userId = userId,
+                dateOfBirth = dateOfBirth.ifEmpty { null },
+                bloodType = bloodType.ifEmpty { null },
+                knownConditions = conditions,
+                currentMedications = medications,
+                allergies = allergyList,
+                baselineHeartRate = 70
+            )
+            
+            repository.saveMedicalInfo(medicalInfo)
+            
+            android.util.Log.d("UserProfileScreen", "✅ Profile saved to both UserPreferences and EmergencyDatabase")
+            android.widget.Toast.makeText(context, "Profile saved successfully", android.widget.Toast.LENGTH_SHORT).show()
+
+        } catch (e: Exception) {
+            android.util.Log.e("UserProfileScreen", "Error saving profile", e)
+            android.widget.Toast.makeText(context, "Error saving profile", android.widget.Toast.LENGTH_SHORT).show()
+        }
+    }
 
     Box(
         modifier = Modifier
@@ -108,7 +197,7 @@ fun UserProfileScreen(
                             letterSpacing = 1.5.sp
                         )
                     }
-                    IconButton(onClick = { /* Save */ }) {
+                    IconButton(onClick = { saveProfile() }) {
                         Icon(
                             imageVector = Icons.Default.Check,
                             contentDescription = "Save",
@@ -160,6 +249,20 @@ fun UserProfileScreen(
                     icon = Icons.Default.Person
                 )
 
+                ProfileTextField(
+                    label = "Phone Number",
+                    value = phone,
+                    onValueChange = { phone = it },
+                    icon = Icons.Default.Phone
+                )
+
+                ProfileTextField(
+                    label = "Date of Birth (DD/MM/YYYY)",
+                    value = dateOfBirth,
+                    onValueChange = { dateOfBirth = it },
+                    icon = Icons.Default.CalendarMonth
+                )
+
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -193,29 +296,76 @@ fun UserProfileScreen(
                 Spacer(modifier = Modifier.height(8.dp))
                 SectionTitle("Medical Information")
 
-                // Medical Conditions
-                ProfileClickableField(
-                    label = "Medical Conditions",
-                    value = if (selectedConditions.isEmpty()) "Tap to select"
-                           else selectedConditions.joinToString(", "),
-                    icon = Icons.Default.MedicalServices,
-                    onClick = { showConditionsDialog = true }
+                // Medical History
+                OutlinedTextField(
+                    value = medicalHistory,
+                    onValueChange = { medicalHistory = it },
+                    label = { Text("Medical History") },
+                    placeholder = { Text("Diabetes, Hypertension, etc.") },
+                    leadingIcon = {
+                        Icon(
+                            imageVector = Icons.Default.MedicalServices,
+                            contentDescription = null,
+                            tint = CosmicPrimary
+                        )
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    minLines = 3,
+                    colors = TextFieldDefaults.outlinedTextFieldColors(
+                        focusedBorderColor = CosmicPrimary,
+                        unfocusedBorderColor = CosmicBorder,
+                        focusedLabelColor = CosmicPrimary,
+                        unfocusedLabelColor = CosmicTextSecondary,
+                        cursorColor = CosmicPrimary
+                    )
                 )
 
                 // Current Medications
-                ProfileClickableField(
-                    label = "Current Medications",
-                    value = currentMedication.ifEmpty { "Tap to add" },
-                    icon = Icons.Default.Medication,
-                    onClick = { showMedicationDialog = true }
+                OutlinedTextField(
+                    value = currentMedication,
+                    onValueChange = { currentMedication = it },
+                    label = { Text("Current Medications") },
+                    placeholder = { Text("Aspirin, Metformin, etc.") },
+                    leadingIcon = {
+                        Icon(
+                            imageVector = Icons.Default.Medication,
+                            contentDescription = null,
+                            tint = CosmicPrimary
+                        )
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    minLines = 2,
+                    colors = TextFieldDefaults.outlinedTextFieldColors(
+                        focusedBorderColor = CosmicPrimary,
+                        unfocusedBorderColor = CosmicBorder,
+                        focusedLabelColor = CosmicPrimary,
+                        unfocusedLabelColor = CosmicTextSecondary,
+                        cursorColor = CosmicPrimary
+                    )
                 )
 
                 // Allergies
-                ProfileClickableField(
-                    label = "Allergies",
-                    value = allergies.ifEmpty { "Tap to add" },
-                    icon = Icons.Default.Warning,
-                    onClick = { showAllergiesDialog = true }
+                OutlinedTextField(
+                    value = allergies,
+                    onValueChange = { allergies = it },
+                    label = { Text("Allergies") },
+                    placeholder = { Text("Penicillin, Peanuts, etc.") },
+                    leadingIcon = {
+                        Icon(
+                            imageVector = Icons.Default.Warning,
+                            contentDescription = null,
+                            tint = CosmicPrimary
+                        )
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    minLines = 2,
+                    colors = TextFieldDefaults.outlinedTextFieldColors(
+                        focusedBorderColor = CosmicPrimary,
+                        unfocusedBorderColor = CosmicBorder,
+                        focusedLabelColor = CosmicPrimary,
+                        unfocusedLabelColor = CosmicTextSecondary,
+                        cursorColor = CosmicPrimary
+                    )
                 )
 
                 // Emergency Note

@@ -1,5 +1,7 @@
 package com.rescuemate.ui.screens
 
+import android.util.Log
+import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -11,24 +13,119 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.rescuemate.R
+import com.rescuemate.data.UserPreferences
+import com.rescuemate.data.repository.EmergencyRepository
 import com.rescuemate.ui.theme.*
+import java.time.LocalDate
+import java.time.Period
+import java.time.format.DateTimeFormatter
+import java.time.format.DateTimeParseException
 
 @Composable
 fun SignUpScreen(
     onBack: () -> Unit,
     onComplete: () -> Unit
 ) {
+    val context = LocalContext.current
+    val userPrefs = remember { UserPreferences(context) }
+    val repository = remember { EmergencyRepository(context) }
+
     var name by remember { mutableStateOf("") }
-    var age by remember { mutableStateOf("") }
+    var dateOfBirth by remember { mutableStateOf("") }
     var gender by remember { mutableStateOf("") }
     var phone by remember { mutableStateOf("") }
     var medicalHistory by remember { mutableStateOf("") }
     var currentMedication by remember { mutableStateOf("") }
     var allergies by remember { mutableStateOf("") }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
+    var isLoading by remember { mutableStateOf(false) }
+
+    // Calculate age from date of birth
+    fun calculateAge(dob: String): String {
+        return try {
+            val formatter = DateTimeFormatter.ofPattern("dd/MM/yyyy")
+            val birthDate = LocalDate.parse(dob, formatter)
+            val age = Period.between(birthDate, LocalDate.now()).years
+            age.toString()
+        } catch (e: Exception) {
+            ""
+        }
+    }
+
+    Log.d("SignUpScreen", "🎨 Screen rendered")
+
+    // Function to save user profile
+    fun saveUserProfile() {
+        Log.d("SignUpScreen", "Starting validation and save")
+
+        val calculatedAge = calculateAge(dateOfBirth)
+        if (calculatedAge.isEmpty()) {
+            errorMessage = "Please enter a valid date of birth (DD/MM/YYYY)"
+            Toast.makeText(context, "Please enter a valid date of birth", Toast.LENGTH_LONG).show()
+            return
+        }
+
+        Log.d("SignUpScreen", "Input values: name='$name', dob='$dateOfBirth', calculated age='$calculatedAge', gender='$gender', phone='$phone'")
+
+        // Validate required fields
+        val validation = repository.validateUserProfile(name, calculatedAge, gender, phone)
+        if (!validation.isValid) {
+            Log.w("SignUpScreen", "Validation failed: ${validation.message}")
+            errorMessage = validation.message
+            Toast.makeText(context, validation.message, Toast.LENGTH_LONG).show()
+            return
+        }
+
+        Log.d("SignUpScreen", "Validation passed - Saving user data")
+
+        isLoading = true
+        errorMessage = null
+
+        try {
+            // Save user profile to SharedPreferences
+            Log.d("SignUpScreen", "Saving user profile to SharedPreferences")
+            userPrefs.saveUserProfile(
+                name = name.trim(),
+                age = calculatedAge,
+                gender = gender,
+                phone = phone.trim()
+            )
+            userPrefs.saveDateOfBirth(dateOfBirth.trim())
+            Toast.makeText(context, "Profile saved", Toast.LENGTH_SHORT).show()
+
+            // Save medical information
+            Log.d("SignUpScreen", "Saving medical information")
+            userPrefs.saveMedicalInfo(
+                medicalHistory = medicalHistory.trim(),
+                currentMedication = currentMedication.trim(),
+                allergies = allergies.trim()
+            )
+            Toast.makeText(context, "Medical info saved", Toast.LENGTH_SHORT).show()
+
+            // Mark onboarding as complete
+            userPrefs.setOnboardingComplete(true)
+
+            Log.d("SignUpScreen", "ALL DATA SAVED SUCCESSFULLY")
+            Log.d("SignUpScreen", "Navigating to home screen")
+
+            Toast.makeText(context, "Registration complete!", Toast.LENGTH_SHORT).show()
+
+            // Navigate to home
+            onComplete()
+
+        } catch (e: Exception) {
+            Log.e("SignUpScreen", "Exception during save: ${e.message}", e)
+            errorMessage = "Error saving data: ${e.message}"
+            Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_LONG).show()
+        } finally {
+            isLoading = false
+        }
+    }
 
     Box(
         modifier = Modifier
@@ -106,11 +203,16 @@ fun SignUpScreen(
 
                     OutlinedTextField(
                         value = name,
-                        onValueChange = { name = it },
+                        onValueChange = {
+                            name = it
+                            errorMessage = null
+                            Log.d("SignUpScreen", "📝 Name input: '$it'")
+                        },
                         label = { Text("Full Name *") },
                         modifier = Modifier.fillMaxWidth(),
                         colors = textFieldColors(),
-                        singleLine = true
+                        singleLine = true,
+                        isError = errorMessage?.contains("name", ignoreCase = true) == true
                     )
 
                     Row(
@@ -118,12 +220,18 @@ fun SignUpScreen(
                         horizontalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
                         OutlinedTextField(
-                            value = age,
-                            onValueChange = { age = it },
-                            label = { Text("Age *") },
+                            value = dateOfBirth,
+                            onValueChange = {
+                                dateOfBirth = it
+                                errorMessage = null
+                                Log.d("SignUpScreen", "Date of Birth input: '$it'")
+                            },
+                            label = { Text("Date of Birth (DD/MM/YYYY) *") },
+                            placeholder = { Text("31/12/1990") },
                             modifier = Modifier.weight(1f),
                             colors = textFieldColors(),
-                            singleLine = true
+                            singleLine = true,
+                            isError = errorMessage?.contains("date", ignoreCase = true) == true || errorMessage?.contains("birth", ignoreCase = true) == true
                         )
 
                         var expanded by remember { mutableStateOf(false) }
@@ -135,6 +243,7 @@ fun SignUpScreen(
                                 modifier = Modifier.fillMaxWidth(),
                                 colors = textFieldColors(),
                                 readOnly = true,
+                                isError = errorMessage?.contains("gender", ignoreCase = true) == true,
                                 trailingIcon = {
                                     IconButton(onClick = { expanded = true }) {
                                         Icon(
@@ -155,6 +264,8 @@ fun SignUpScreen(
                                             onClick = {
                                                 gender = option
                                                 expanded = false
+                                                errorMessage = null
+                                                Log.d("SignUpScreen", "📝 Gender selected: '$option'")
                                             }
                                         )
                                     }
@@ -164,11 +275,16 @@ fun SignUpScreen(
 
                     OutlinedTextField(
                         value = phone,
-                        onValueChange = { phone = it },
+                        onValueChange = {
+                            phone = it
+                            errorMessage = null
+                            Log.d("SignUpScreen", "📝 Phone input: '$it'")
+                        },
                         label = { Text("Phone Number *") },
                         modifier = Modifier.fillMaxWidth(),
                         colors = textFieldColors(),
-                        singleLine = true
+                        singleLine = true,
+                        isError = errorMessage?.contains("phone", ignoreCase = true) == true
                     )
                 }
 
@@ -210,7 +326,10 @@ fun SignUpScreen(
 
                     OutlinedTextField(
                         value = allergies,
-                        onValueChange = { allergies = it },
+                        onValueChange = {
+                            allergies = it
+                            Log.d("SignUpScreen", "📝 Allergies input: '${it.take(30)}...'")
+                        },
                         label = { Text("Allergies") },
                         modifier = Modifier.fillMaxWidth(),
                         colors = textFieldColors(),
@@ -218,9 +337,37 @@ fun SignUpScreen(
                     )
                 }
 
+                // Error Message Display
+                if (errorMessage != null) {
+                    Card(
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.errorContainer
+                        )
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(16.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Error,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.error,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = errorMessage!!,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.error
+                            )
+                        }
+                    }
+                }
+
                 // Submit Button
                 Button(
-                    onClick = onComplete,
+                    onClick = { saveUserProfile() },
+                    enabled = !isLoading,
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(56.dp),
@@ -229,10 +376,18 @@ fun SignUpScreen(
                     ),
                     shape = MaterialTheme.shapes.extraLarge
                 ) {
-                    Text(
-                        text = "Complete Registration",
-                        style = MaterialTheme.typography.labelLarge
-                    )
+                    if (isLoading) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(24.dp),
+                            color = androidx.compose.ui.graphics.Color.White,
+                            strokeWidth = 2.dp
+                        )
+                    } else {
+                        Text(
+                            text = "Complete Registration",
+                            style = MaterialTheme.typography.labelLarge
+                        )
+                    }
                 }
             }
         }

@@ -11,10 +11,13 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import android.content.Context
+import androidx.viewbinding.BuildConfig
 import com.rescuemate.services.ElevenLabsVoiceService
 import com.rescuemate.ui.theme.*
 import kotlinx.coroutines.launch
@@ -54,8 +57,36 @@ fun VoiceAISetupScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val voiceService = remember { ElevenLabsVoiceService(context) }
+    val prefs = context.getSharedPreferences("voice_ai_prefs", Context.MODE_PRIVATE)
 
-    var selectedVoice by remember { mutableStateOf<Voice?>(null) }
+    // Load API key from .env or SharedPreferences fallback
+    var apiKey by remember { 
+        mutableStateOf(
+            prefs.getString("manual_api_key", null) ?: com.rescuemate.BuildConfig.ELEVEN_API_KEY
+        ) 
+    }
+    
+    var showApiKeyDialog by remember { mutableStateOf(false) }
+    var tempApiKey by remember { mutableStateOf("") }
+    
+    // Check if API key is valid
+    val isApiKeyValid = apiKey.isNotEmpty() && apiKey != "YOUR_API_KEY_HERE" && apiKey != ""
+
+    // Set API key immediately
+    LaunchedEffect(apiKey) {
+        if (isApiKeyValid) {
+            voiceService.setApiKey(apiKey)
+            android.util.Log.d("VoiceAISetup", "API Key set: ${apiKey.take(10)}...")
+        }
+    }
+
+    var selectedVoice by remember { 
+        mutableStateOf<Voice?>(
+            prefs.getString("selected_voice_id", null)?.let { savedId ->
+                availableVoices.find { it.id == savedId }
+            }
+        ) 
+    }
     var isPlaying by remember { mutableStateOf(false) }
     var playingVoiceId by remember { mutableStateOf<String?>(null) }
     var wakeWordEnabled by remember { mutableStateOf(true) }
@@ -129,6 +160,67 @@ fun VoiceAISetupScreen(
                     .padding(24.dp),
                 verticalArrangement = Arrangement.spacedBy(24.dp)
             ) {
+                // API Key Warning (if invalid)
+                if (!isApiKeyValid) {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(
+                            containerColor = Color(0xFFFFF3CD)
+                        ),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFFFC107))
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                verticalAlignment = Alignment.Top
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Warning,
+                                    contentDescription = null,
+                                    tint = Color(0xFFF57C00),
+                                    modifier = Modifier.size(24.dp)
+                                )
+                                Column {
+                                    Text(
+                                        text = "ElevenLabs API Key Required",
+                                        style = MaterialTheme.typography.titleSmall,
+                                        color = Color(0xFF3E2723),
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text(
+                                        text = "Voice LLM features require an ElevenLabs API key. Please update your .env file and rebuild the app, or enter a key manually.",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = Color(0xFF5D4037),
+                                        lineHeight = 18.sp
+                                    )
+                                }
+                            }
+                            Button(
+                                onClick = { 
+                                    tempApiKey = ""
+                                    showApiKeyDialog = true 
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = Color(0xFFF57C00)
+                                )
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Key,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("Enter API Key Manually")
+                            }
+                        }
+                    }
+                }
+                
                 // Hero Section
                 Card(
                     modifier = Modifier.fillMaxWidth(),
@@ -150,14 +242,14 @@ fun VoiceAISetupScreen(
                         )
                         Column {
                             Text(
-                                text = "AI-Powered Emergency Assistant",
+                                text = "AI-Powered Conversational Assistant",
                                 style = MaterialTheme.typography.titleMedium,
                                 color = CosmicTextPrimary,
                                 fontWeight = FontWeight.Bold
                             )
                             Spacer(modifier = Modifier.height(4.dp))
                             Text(
-                                text = "Choose a voice that will guide you through emergencies with real-time AI assistance",
+                                text = "This app uses ElevenLabs Conversational AI for real-time voice interactions. Create an agent in your ElevenLabs dashboard to customize voice, personality, and knowledge base.",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = CosmicTextSecondary,
                                 lineHeight = 18.sp
@@ -264,15 +356,61 @@ fun VoiceAISetupScreen(
                                 errorMessage = null
                                 playingVoiceId = voice.id
 
-                                scope.launch {
-                                    val result = voiceService.previewVoice(voice.id)
-                                    isLoading = false
+                                android.util.Log.d("VoiceAISetup", "Starting voice preview for: ${voice.name}")
 
-                                    if (result.isSuccess) {
-                                        isPlaying = true
-                                    } else {
-                                        errorMessage = result.exceptionOrNull()?.message
+                                scope.launch {
+                                    try {
+                                        // Generate audio from text
+                                        val testMessage = "Hello, this is ${voice.name}. I'm here to help you in emergency situations. Stay calm and follow my guidance."
+                                        android.util.Log.d("VoiceAISetup", "Generating audio...")
+
+                                        val audioResult = voiceService.textToSpeech(
+                                            text = testMessage,
+                                            voiceId = voice.id
+                                        )
+
+                                        if (audioResult.isSuccess) {
+                                            val audioPath = audioResult.getOrNull()
+                                            android.util.Log.d("VoiceAISetup", "Audio generated: $audioPath")
+
+                                            if (audioPath != null) {
+                                                // Play the audio
+                                                val playResult = voiceService.playAudio(audioPath)
+
+                                                if (playResult.isSuccess) {
+                                                    isPlaying = true
+                                                    android.util.Log.d("VoiceAISetup", "Playing audio successfully")
+                                                    android.widget.Toast.makeText(context, "Playing ${voice.name}", android.widget.Toast.LENGTH_SHORT).show()
+                                                } else {
+                                                    errorMessage = "Failed to play audio: ${playResult.exceptionOrNull()?.message}"
+                                                    android.util.Log.e("VoiceAISetup", errorMessage!!)
+                                                    android.widget.Toast.makeText(context, "⚠️ Failed to play audio. Check device volume.", android.widget.Toast.LENGTH_LONG).show()
+                                                    playingVoiceId = null
+                                                }
+                                            }
+                                        } else {
+                                            val error = audioResult.exceptionOrNull()?.message ?: "Unknown error"
+                                            errorMessage = "Failed to generate audio: $error"
+                                            android.util.Log.e("VoiceAISetup", errorMessage!!)
+                                            
+                                            // Show user-friendly error message
+                                            val userMessage = when {
+                                                error.contains("API key") -> "⚠️ API key issue. Please check your .env file."
+                                                error.contains("401") || error.contains("403") -> "⚠️ Invalid API key. Please verify ELEVEN_API_KEY in .env"
+                                                error.contains("429") -> "⚠️ Rate limit exceeded. Please try again later."
+                                                error.contains("network") || error.contains("Unable to resolve host") -> "⚠️ Network error. Check your internet connection."
+                                                else -> "⚠️ $error"
+                                            }
+                                            android.widget.Toast.makeText(context, userMessage, android.widget.Toast.LENGTH_LONG).show()
+                                            playingVoiceId = null
+                                        }
+                                    } catch (e: Exception) {
+                                        errorMessage = "Error: ${e.message}"
+                                        android.util.Log.e("VoiceAISetup", "Exception during voice preview", e)
+                                        android.widget.Toast.makeText(context, "Error: ${e.message}", android.widget.Toast.LENGTH_LONG).show()
                                         playingVoiceId = null
+                                    } finally {
+                                        isLoading = false
                                     }
                                 }
                             }
@@ -282,7 +420,17 @@ fun VoiceAISetupScreen(
 
                 // Action Button
                 Button(
-                    onClick = onComplete,
+                    onClick = {
+                        // Save selected voice to SharedPreferences
+                        selectedVoice?.let { voice ->
+                            prefs.edit().apply {
+                                putString("selected_voice_id", voice.id)
+                                putString("selected_voice_name", voice.name)
+                                apply()
+                            }
+                        }
+                        onComplete()
+                    },
                     enabled = selectedVoice != null,
                     modifier = Modifier
                         .fillMaxWidth()
@@ -308,6 +456,78 @@ fun VoiceAISetupScreen(
                 Spacer(modifier = Modifier.height(16.dp))
             }
         }
+    }
+    
+    // API Key Input Dialog
+    if (showApiKeyDialog) {
+        AlertDialog(
+            onDismissRequest = { showApiKeyDialog = false },
+            title = {
+                Text(
+                    text = "Enter ElevenLabs API Key",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text(
+                        text = "Enter your ElevenLabs API key to enable Voice LLM features:",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = CosmicTextSecondary
+                    )
+                    OutlinedTextField(
+                        value = tempApiKey,
+                        onValueChange = { tempApiKey = it },
+                        label = { Text("API Key") },
+                        placeholder = { Text("sk_...") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = CosmicPrimary,
+                            focusedLabelColor = CosmicPrimary
+                        )
+                    )
+                    Text(
+                        text = "This will be saved locally on your device.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = CosmicTextSecondary,
+                        fontStyle = androidx.compose.ui.text.font.FontStyle.Italic
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (tempApiKey.isNotEmpty()) {
+                            // Save to SharedPreferences
+                            prefs.edit().putString("manual_api_key", tempApiKey).apply()
+                            apiKey = tempApiKey
+                            showApiKeyDialog = false
+                            android.widget.Toast.makeText(
+                                context,
+                                "API Key saved successfully",
+                                android.widget.Toast.LENGTH_SHORT
+                            ).show()
+                        }
+                    },
+                    enabled = tempApiKey.isNotEmpty(),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = CosmicPrimary
+                    )
+                ) {
+                    Text("Save")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showApiKeyDialog = false }) {
+                    Text("Cancel", color = CosmicTextSecondary)
+                }
+            },
+            containerColor = CosmicCard,
+            titleContentColor = CosmicTextPrimary,
+            textContentColor = CosmicTextPrimary
+        )
     }
 }
 

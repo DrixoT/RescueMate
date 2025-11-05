@@ -1,5 +1,7 @@
 package com.rescuemate.ui.screens
 
+import android.util.Log
+import android.widget.Toast
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
@@ -14,6 +16,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -21,9 +24,12 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
+import com.rescuemate.data.UserPreferences
+import com.rescuemate.data.repository.EmergencyRepository
 import com.rescuemate.ui.theme.*
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import java.security.MessageDigest
 
 @OptIn(ExperimentalAnimationApi::class)
 @Composable
@@ -32,6 +38,10 @@ fun EmailLoginScreen(
     onLogin: () -> Unit,
     onSignUp: () -> Unit
 ) {
+    val context = LocalContext.current
+    val userPrefs = remember { UserPreferences(context) }
+    val repository = remember { EmergencyRepository(context) }
+
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var passwordVisible by remember { mutableStateOf(false) }
@@ -39,6 +49,70 @@ fun EmailLoginScreen(
     var errorMessage by remember { mutableStateOf<String?>(null) }
     val focusManager = LocalFocusManager.current
     val scope = rememberCoroutineScope()
+
+    Log.d("EmailLoginScreen", "🎨 Screen rendered")
+
+    // Simple hash function for demo (in production, use proper authentication)
+    fun hashPassword(password: String): String {
+        val bytes = MessageDigest.getInstance("SHA-256").digest(password.toByteArray())
+        return bytes.joinToString("") { "%02x".format(it) }
+    }
+
+    // Login function
+    fun performLogin() {
+        Log.d("EmailLoginScreen", "🔐 SIGN IN CLICKED - Starting validation")
+        Log.d("EmailLoginScreen", "📝 Email: '$email'")
+
+        // Validate email
+        val emailValidation = repository.validateEmail(email)
+        if (!emailValidation.isValid) {
+            Log.w("EmailLoginScreen", "❌ Email validation failed: ${emailValidation.message}")
+            errorMessage = emailValidation.message
+            Toast.makeText(context, "❌ ${emailValidation.message}", Toast.LENGTH_LONG).show()
+            return
+        }
+
+        // Validate password
+        val passwordValidation = repository.validatePassword(password)
+        if (!passwordValidation.isValid) {
+            Log.w("EmailLoginScreen", "❌ Password validation failed: ${passwordValidation.message}")
+            errorMessage = passwordValidation.message
+            Toast.makeText(context, "❌ ${passwordValidation.message}", Toast.LENGTH_LONG).show()
+            return
+        }
+
+        Log.d("EmailLoginScreen", "✅ Validation passed - Processing login")
+
+        isLoading = true
+        errorMessage = null
+
+        scope.launch {
+            try {
+                // Hash password
+                val passwordHash = hashPassword(password)
+
+                // Save credentials (in production, verify against server first)
+                Log.d("EmailLoginScreen", "💾 Saving user credentials")
+                userPrefs.saveUserCredentials(email.trim(), passwordHash)
+                userPrefs.setOnboardingComplete(true)
+
+                Toast.makeText(context, "✅ Logged in successfully", Toast.LENGTH_SHORT).show()
+
+                Log.d("EmailLoginScreen", "✅ LOGIN SUCCESSFUL")
+                Log.d("EmailLoginScreen", "🧭 Navigating to home screen")
+
+                delay(300)
+                onLogin()
+
+            } catch (e: Exception) {
+                Log.e("EmailLoginScreen", "❌ Login error: ${e.message}", e)
+                errorMessage = "Login failed: ${e.message}"
+                Toast.makeText(context, "❌ Login failed", Toast.LENGTH_LONG).show()
+            } finally {
+                isLoading = false
+            }
+        }
+    }
 
     // Animated entry
     var visible by remember { mutableStateOf(false) }
@@ -128,6 +202,7 @@ fun EmailLoginScreen(
                     onValueChange = {
                         email = it
                         errorMessage = null
+                        Log.d("EmailLoginScreen", "📝 Email input: '$it'")
                     },
                     label = { Text("Email") },
                     placeholder = { Text("your.email@example.com") },
@@ -140,6 +215,7 @@ fun EmailLoginScreen(
                     },
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
+                    isError = errorMessage?.contains("email", ignoreCase = true) == true,
                     keyboardOptions = KeyboardOptions(
                         keyboardType = KeyboardType.Email,
                         imeAction = ImeAction.Next
@@ -166,6 +242,7 @@ fun EmailLoginScreen(
                     onValueChange = {
                         password = it
                         errorMessage = null
+                        Log.d("EmailLoginScreen", "📝 Password input changed (length: ${it.length})")
                     },
                     label = { Text("Password") },
                     placeholder = { Text("Enter your password") },
@@ -191,12 +268,16 @@ fun EmailLoginScreen(
                                           else PasswordVisualTransformation(),
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
+                    isError = errorMessage?.contains("password", ignoreCase = true) == true,
                     keyboardOptions = KeyboardOptions(
                         keyboardType = KeyboardType.Password,
                         imeAction = ImeAction.Done
                     ),
                     keyboardActions = KeyboardActions(
-                        onDone = { focusManager.clearFocus() }
+                        onDone = {
+                            focusManager.clearFocus()
+                            performLogin()
+                        }
                     ),
                     colors = TextFieldDefaults.colors(
                         focusedContainerColor = CosmicCard,
@@ -259,17 +340,7 @@ fun EmailLoginScreen(
 
                 // Sign In Button
                 Button(
-                    onClick = {
-                        when {
-                            email.isEmpty() -> errorMessage = "Please enter your email"
-                            password.isEmpty() -> errorMessage = "Please enter your password"
-                            else -> {
-                                isLoading = true
-                                // Handle login
-                                onLogin()
-                            }
-                        }
-                    },
+                    onClick = { performLogin() },
                     enabled = !isLoading,
                     modifier = Modifier
                         .fillMaxWidth()

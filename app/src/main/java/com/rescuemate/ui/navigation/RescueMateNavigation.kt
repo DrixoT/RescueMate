@@ -1,10 +1,13 @@
 package com.rescuemate.ui.navigation
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
+import androidx.compose.ui.platform.LocalContext
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import com.rescuemate.data.UserPreferences
 import com.rescuemate.ui.screens.OnboardingScreen
 import com.rescuemate.ui.screens.SignInScreen
 import com.rescuemate.ui.screens.SignUpScreen
@@ -16,6 +19,7 @@ import com.rescuemate.ui.screens.LiveLocationScreen
 import com.rescuemate.ui.screens.SettingsScreen
 import com.rescuemate.ui.screens.UserProfileScreen
 import com.rescuemate.ui.screens.VoiceAISetupScreen
+import com.rescuemate.ui.screens.WellnessAIConversationScreen
 import com.rescuemate.ui.screens.PermissionRequestScreen
 import com.rescuemate.ui.screens.BluetoothPairingScreen as BTPairingScreen
 
@@ -23,9 +27,22 @@ import com.rescuemate.ui.screens.BluetoothPairingScreen as BTPairingScreen
 fun RescueMateNavigation(
     navController: NavHostController = rememberNavController()
 ) {
+    val context = LocalContext.current
+    val userPrefs = remember { UserPreferences(context) }
+    
+    // Determine start destination based on login status
+    val startDestination = when {
+        // If user is logged in, go to home
+        userPrefs.isLoggedIn() -> Screen.Home.route
+        // If onboarding is complete but not logged in, go to sign in
+        userPrefs.isOnboardingComplete() -> Screen.SignIn.route
+        // Otherwise, show onboarding
+        else -> Screen.Onboarding.route
+    }
+    
     NavHost(
         navController = navController,
-        startDestination = Screen.Onboarding.route
+        startDestination = startDestination
     ) {
         composable(Screen.Onboarding.route) {
             OnboardingScreen(
@@ -75,6 +92,7 @@ fun RescueMateNavigation(
                         "settings" -> navController.navigate(Screen.Settings.route)
                         "profile" -> navController.navigate(Screen.Profile.route)
                         "voiceAI" -> navController.navigate(Screen.VoiceAI.route)
+                        "wellness_ai" -> navController.navigate(Screen.WellnessAI.route)
                     }
                 }
             )
@@ -120,7 +138,8 @@ fun RescueMateNavigation(
                 },
                 onNavigateToVoiceAI = {
                     navController.navigate(Screen.VoiceAI.route)
-                }
+                },
+                navController = navController
             )
         }
         
@@ -162,6 +181,14 @@ fun RescueMateNavigation(
                     navController.popBackStack()
                 },
                 onComplete = {
+                    navController.popBackStack()
+                }
+            )
+        }
+        
+        composable(Screen.WellnessAI.route) {
+            WellnessAIConversationScreen(
+                onBack = {
                     navController.popBackStack()
                 }
             )

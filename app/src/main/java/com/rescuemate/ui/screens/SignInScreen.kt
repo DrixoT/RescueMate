@@ -7,6 +7,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
@@ -28,6 +29,17 @@ fun SignInScreen(
     onSignUp: () -> Unit,
     onEmailLogin: () -> Unit = {}
 ) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val userPrefs = remember { com.rescuemate.data.UserPreferences(context) }
+    
+    // Function to handle successful sign in
+    fun handleSuccessfulSignIn(email: String = "user@rescuemate.com") {
+        // Save login state
+        userPrefs.saveUserCredentials(email, "hashed_password")
+        userPrefs.setOnboardingComplete(true)
+        android.util.Log.d("SignInScreen", "✅ User signed in and saved credentials")
+        onSignIn()
+    }
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -106,17 +118,17 @@ fun SignInScreen(
                 SignInButton(
                     text = stringResource(R.string.continue_with_google),
                     icon = Icons.Default.Login, // TODO: Replace with Google logo
-                    onClick = onSignIn // Google Sign In
+                    onClick = { handleSuccessfulSignIn("google_user@rescuemate.com") }
                 )
                 SignInButton(
                     text = stringResource(R.string.continue_with_apple),
                     icon = Icons.Default.PhoneIphone, // Apple icon alternative
-                    onClick = onSignIn // Apple Sign In
+                    onClick = { handleSuccessfulSignIn("apple_user@rescuemate.com") }
                 )
                 SignInButton(
                     text = stringResource(R.string.continue_with_phone),
                     icon = Icons.Default.Phone,
-                    onClick = onSignIn // Phone Sign In
+                    onClick = { handleSuccessfulSignIn("phone_user@rescuemate.com") }
                 )
                 SignInButton(
                     text = stringResource(R.string.continue_with_email),

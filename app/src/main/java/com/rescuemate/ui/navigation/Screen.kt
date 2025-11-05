@@ -13,6 +13,7 @@ sealed class Screen(val route: String) {
     object Bluetooth : Screen("bluetooth")
     object Profile : Screen("profile")
     object VoiceAI : Screen("voiceAI")
+    object WellnessAI : Screen("wellness_ai")
     object PermissionRequest : Screen("permissionRequest")
 }
 

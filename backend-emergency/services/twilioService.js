@@ -6,6 +6,7 @@
 
 const twilio = require('twilio');
 const logger = require('../utils/logger');
+const elevenLabsService = require('./elevenLabsService');
 
 // Initialize Twilio client
 const client = twilio(
@@ -17,7 +18,7 @@ const TWILIO_PHONE = process.env.TWILIO_PHONE_NUMBER;
 const WEBHOOK_BASE_URL = process.env.EMERGENCY_WEBHOOK_URL || 'http://localhost:3000/api/webhooks';
 
 /**
- * Make emergency voice call to contact
+ * Make emergency voice call to contact using ElevenLabs voice
  */
 async function makeEmergencyCall(
     contactPhone,
@@ -26,16 +27,54 @@ async function makeEmergencyCall(
     healthSummary,
     locationLink,
     emergencyDetails,
-    emergencyId
+    emergencyId,
+    userAge = null,
+    medicalInfo = {}
 ) {
     try {
-        // Build TwiML for voice message
-        const twimlUrl = `${WEBHOOK_BASE_URL}/emergency-voice?` +
-            `emergencyId=${encodeURIComponent(emergencyId)}` +
-            `&userName=${encodeURIComponent(userName)}` +
-            `&contactName=${encodeURIComponent(contactName)}` +
-            `&healthSummary=${encodeURIComponent(healthSummary)}` +
-            `&locationLink=${encodeURIComponent(locationLink)}`;
+        // Parse emergency condition from healthSummary or emergencyDetails
+        const condition = emergencyDetails?.emergencyType || 
+                         healthSummary?.match(/experiencing[^.]*/i)?.[0] || 
+                         'an emergency situation';
+
+        // Generate ElevenLabs voice message
+        const voiceResult = await elevenLabsService.generateEmergencyCallVoice({
+            userName,
+            age: userAge || 0,
+            condition,
+            location: locationLink || 'Location unavailable',
+            medicalInfo,
+            contactName
+        });
+
+        let twimlUrl;
+
+        if (voiceResult.success && voiceResult.audioUrl) {
+            // Use ElevenLabs generated audio
+            // Build TwiML URL that will play the audio file
+            twimlUrl = `${WEBHOOK_BASE_URL}/emergency-voice-elevenlabs?` +
+                `emergencyId=${encodeURIComponent(emergencyId)}` +
+                `&audioUrl=${encodeURIComponent(voiceResult.audioUrl)}` +
+                `&userName=${encodeURIComponent(userName)}` +
+                `&contactName=${encodeURIComponent(contactName)}`;
+            
+            logger.info(`Using ElevenLabs voice for emergency call`, {
+                emergencyId,
+                audioUrl: voiceResult.audioUrl
+            });
+        } else {
+            // Fallback to Twilio TTS if ElevenLabs fails
+            logger.warn('ElevenLabs voice generation failed, using Twilio TTS fallback', {
+                error: voiceResult.error
+            });
+            
+            twimlUrl = `${WEBHOOK_BASE_URL}/emergency-voice?` +
+                `emergencyId=${encodeURIComponent(emergencyId)}` +
+                `&userName=${encodeURIComponent(userName)}` +
+                `&contactName=${encodeURIComponent(contactName)}` +
+                `&healthSummary=${encodeURIComponent(healthSummary)}` +
+                `&locationLink=${encodeURIComponent(locationLink)}`;
+        }
 
         // Initiate call
         const call = await client.calls.create({
@@ -53,13 +92,15 @@ async function makeEmergencyCall(
         logger.info(`Emergency call initiated`, {
             callSid: call.sid,
             contactPhone,
-            emergencyId
+            emergencyId,
+            usingElevenLabs: voiceResult.success
         });
 
         return {
             success: true,
             callSid: call.sid,
-            status: call.status
+            status: call.status,
+            audioUrl: voiceResult.audioUrl || null
         };
 
     } catch (error) {

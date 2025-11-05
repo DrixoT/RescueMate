@@ -5,6 +5,7 @@ import android.content.SharedPreferences
 import com.rescuemate.emergency.EmergencyConstants
 import com.rescuemate.emergency.data.HealthData
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -26,9 +27,15 @@ class HealthMonitoringService(private val context: Context) {
     )
 
     private val client = OkHttpClient.Builder()
-        .connectTimeout(30, TimeUnit.SECONDS)
+        .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(30, TimeUnit.SECONDS)
+        .writeTimeout(15, TimeUnit.SECONDS)
+        .retryOnConnectionFailure(true)
         .build()
+    
+    // Cache for LLM responses to avoid redundant calls
+    private val analysisCache = mutableMapOf<String, Pair<HealthAnalysisResult, Long>>()
+    private val CACHE_DURATION_MS = 60_000L // 1 minute cache
 
     private val heartRateHistory = mutableListOf<HeartRateReading>()
     private var baselineHeartRate: Int = prefs.getInt(EmergencyConstants.PREF_KEY_USER_BASELINE_HEART_RATE, 70)
@@ -108,24 +115,41 @@ class HealthMonitoringService(private val context: Context) {
                 heartRateHistory.takeLast(20)
             }
 
-            // Basic rule-based analysis
+            // Basic rule-based analysis (always performed as fallback)
             val basicAnalysis = performBasicAnalysis(currentHeartRate, activityLevel, isExercising)
+
+            // Check cache first
+            val cacheKey = generateCacheKey(currentHeartRate, recentReadings, activityLevel, isExercising)
+            val cachedResult = getCachedAnalysis(cacheKey)
+            if (cachedResult != null) {
+                android.util.Log.d("HealthMonitoringService", "Using cached LLM analysis")
+                return@withContext cachedResult
+            }
 
             // If we have LLM API key, enhance with AI analysis
             if (!llmApiKey.isNullOrEmpty() && recentReadings.size >= 5) {
-                return@withContext performLLMAnalysis(
+                val llmResult = performLLMAnalysisWithRetry(
                     currentHeartRate,
                     recentReadings,
                     activityLevel,
                     isExercising,
                     llmApiKey
-                ) ?: basicAnalysis
+                )
+                
+                if (llmResult != null) {
+                    // Cache the result
+                    cacheAnalysis(cacheKey, llmResult)
+                    return@withContext llmResult
+                } else {
+                    android.util.Log.w("HealthMonitoringService", 
+                        "LLM analysis failed, using basic analysis")
+                }
             }
 
             basicAnalysis
 
         } catch (e: Exception) {
-            e.printStackTrace()
+            android.util.Log.e("HealthMonitoringService", "Error in analyzeHealthStatus", e)
             HealthAnalysisResult(
                 isAbnormal = false,
                 riskScore = 0f,
@@ -134,6 +158,118 @@ class HealthMonitoringService(private val context: Context) {
                 confidence = 0f,
                 trendAnalysis = "Error analyzing trend"
             )
+        }
+    }
+    
+    /**
+     * Perform LLM analysis with retry logic
+     */
+    private suspend fun performLLMAnalysisWithRetry(
+        currentHeartRate: Int,
+        recentReadings: List<HeartRateReading>,
+        activityLevel: HealthData.ActivityLevel,
+        isExercising: Boolean,
+        apiKey: String,
+        maxRetries: Int = 2
+    ): HealthAnalysisResult? = withContext(Dispatchers.IO) {
+        var lastException: Exception? = null
+        
+        for (attempt in 0..maxRetries) {
+            try {
+                val result = performOpenAIAnalysis(
+                    currentHeartRate,
+                    recentReadings,
+                    activityLevel,
+                    isExercising,
+                    apiKey
+                )
+                
+                if (result != null) {
+                    android.util.Log.d("HealthMonitoringService", 
+                        "LLM analysis successful on attempt ${attempt + 1}")
+                    return@withContext result
+                }
+            } catch (e: java.net.SocketTimeoutException) {
+                lastException = e
+                android.util.Log.w("HealthMonitoringService", 
+                    "LLM analysis timeout on attempt ${attempt + 1}")
+                if (attempt < maxRetries) {
+                    delay(1000L * (attempt + 1)) // Exponential backoff
+                }
+            } catch (e: Exception) {
+                lastException = e
+                android.util.Log.e("HealthMonitoringService", 
+                    "LLM analysis error on attempt ${attempt + 1}", e)
+                if (attempt < maxRetries && isRetryableError(e)) {
+                    delay(1000L * (attempt + 1)) // Exponential backoff
+                } else {
+                    break // Don't retry on non-retryable errors
+                }
+            }
+        }
+        
+        android.util.Log.e("HealthMonitoringService", 
+            "LLM analysis failed after $maxRetries retries", lastException)
+        null
+    }
+    
+    /**
+     * Check if error is retryable
+     */
+    private fun isRetryableError(e: Exception): Boolean {
+        return when (e) {
+            is java.net.SocketTimeoutException,
+            is java.net.UnknownHostException,
+            is java.io.IOException -> true
+            else -> false
+        }
+    }
+    
+    /**
+     * Generate cache key for analysis
+     */
+    private fun generateCacheKey(
+        currentHeartRate: Int,
+        recentReadings: List<HeartRateReading>,
+        activityLevel: HealthData.ActivityLevel,
+        isExercising: Boolean
+    ): String {
+        val recentAvg = if (recentReadings.isNotEmpty()) {
+            recentReadings.map { it.heartRate }.average().toInt()
+        } else {
+            currentHeartRate
+        }
+        return "${currentHeartRate}_${recentAvg}_${activityLevel}_${isExercising}"
+    }
+    
+    /**
+     * Get cached analysis if still valid
+     */
+    private fun getCachedAnalysis(cacheKey: String): HealthAnalysisResult? {
+        synchronized(analysisCache) {
+            val cached = analysisCache[cacheKey]
+            if (cached != null) {
+                val (result, timestamp) = cached
+                if (System.currentTimeMillis() - timestamp < CACHE_DURATION_MS) {
+                    return result
+                } else {
+                    analysisCache.remove(cacheKey)
+                }
+            }
+        }
+        return null
+    }
+    
+    /**
+     * Cache analysis result
+     */
+    private fun cacheAnalysis(cacheKey: String, result: HealthAnalysisResult) {
+        synchronized(analysisCache) {
+            analysisCache[cacheKey] = Pair(result, System.currentTimeMillis())
+            
+            // Clean old cache entries
+            val now = System.currentTimeMillis()
+            analysisCache.entries.removeAll { (now - it.value.second) > CACHE_DURATION_MS }
         }
     }
 
@@ -259,22 +395,60 @@ class HealthMonitoringService(private val context: Context) {
                 .build()
 
             val response = client.newCall(request).execute()
+            
             if (!response.isSuccessful) {
+                val errorBody = response.body?.string() ?: "Unknown error"
+                android.util.Log.e("HealthMonitoringService", 
+                    "OpenAI API error: ${response.code} - $errorBody")
                 return@withContext null
             }
 
             val responseBody = response.body?.string() ?: return@withContext null
-            val jsonResponse = JSONObject(responseBody)
-            val content = jsonResponse
-                .getJSONArray("choices")
-                .getJSONObject(0)
-                .getJSONObject("message")
-                .getString("content")
+            
+            try {
+                val jsonResponse = JSONObject(responseBody)
+                
+                // Check for errors in response
+                if (jsonResponse.has("error")) {
+                    val error = jsonResponse.getJSONObject("error")
+                    android.util.Log.e("HealthMonitoringService", 
+                        "OpenAI API error: ${error.optString("message", "Unknown error")}")
+                    return@withContext null
+                }
+                
+                val choices = jsonResponse.getJSONArray("choices")
+                if (choices.length() == 0) {
+                    android.util.Log.w("HealthMonitoringService", "No choices in OpenAI response")
+                    return@withContext null
+                }
+                
+                val content = choices
+                    .getJSONObject(0)
+                    .getJSONObject("message")
+                    .getString("content")
 
-            parseHealthAnalysisResult(content)
+                val result = parseHealthAnalysisResult(content)
+                android.util.Log.d("HealthMonitoringService", 
+                    "OpenAI analysis: abnormal=${result.isAbnormal}, risk=${result.riskScore}")
+                return@withContext result
+                
+            } catch (e: org.json.JSONException) {
+                android.util.Log.e("HealthMonitoringService", 
+                    "Failed to parse OpenAI response", e)
+                return@withContext null
+            }
 
+        } catch (e: java.net.SocketTimeoutException) {
+            android.util.Log.e("HealthMonitoringService", 
+                "OpenAI API timeout after 30 seconds", e)
+            throw e // Re-throw to trigger retry
+        } catch (e: java.io.IOException) {
+            android.util.Log.e("HealthMonitoringService", 
+                "OpenAI API network error", e)
+            throw e // Re-throw to trigger retry
         } catch (e: Exception) {
-            e.printStackTrace()
+            android.util.Log.e("HealthMonitoringService", 
+                "Unexpected error in OpenAI analysis", e)
             null
         }
     }
@@ -322,30 +496,52 @@ class HealthMonitoringService(private val context: Context) {
      */
     private fun parseHealthAnalysisResult(jsonContent: String): HealthAnalysisResult {
         return try {
-            // Extract JSON from response (may be wrapped in markdown)
-            val jsonStart = jsonContent.indexOf('{')
-            val jsonEnd = jsonContent.lastIndexOf('}') + 1
-            val jsonStr = if (jsonStart >= 0 && jsonEnd > jsonStart) {
-                jsonContent.substring(jsonStart, jsonEnd)
-            } else {
-                jsonContent
+            // Extract JSON from response (may be wrapped in markdown or code blocks)
+            var jsonStr = jsonContent.trim()
+            
+            // Remove markdown code blocks if present
+            if (jsonStr.startsWith("```json")) {
+                jsonStr = jsonStr.removePrefix("```json").trim()
+            }
+            if (jsonStr.startsWith("```")) {
+                jsonStr = jsonStr.removePrefix("```").trim()
+            }
+            if (jsonStr.endsWith("```")) {
+                jsonStr = jsonStr.removeSuffix("```").trim()
+            }
+            
+            // Extract JSON object
+            val jsonStart = jsonStr.indexOf('{')
+            val jsonEnd = jsonStr.lastIndexOf('}') + 1
+            if (jsonStart >= 0 && jsonEnd > jsonStart) {
+                jsonStr = jsonStr.substring(jsonStart, jsonEnd)
             }
 
             val json = JSONObject(jsonStr)
+            
+            // Validate and parse with defaults
+            val isAbnormal = json.optBoolean("isAbnormal", false)
+            val riskScore = json.optDouble("riskScore", 0.0).toFloat().coerceIn(0f, 1f)
+            val alertReason = json.optString("alertReason", "No specific reason provided")
+            val recommendedAction = json.optString("recommendedAction", "Continue monitoring")
+            val confidence = json.optDouble("confidence", 0.5).toFloat().coerceIn(0f, 1f)
+            val trendAnalysis = json.optString("trendAnalysis", "No trend analysis available")
+            
             HealthAnalysisResult(
-                isAbnormal = json.getBoolean("isAbnormal"),
-                riskScore = json.getDouble("riskScore").toFloat(),
-                alertReason = json.getString("alertReason"),
-                recommendedAction = json.getString("recommendedAction"),
-                confidence = json.getDouble("confidence").toFloat(),
-                trendAnalysis = json.getString("trendAnalysis")
+                isAbnormal = isAbnormal,
+                riskScore = riskScore,
+                alertReason = alertReason,
+                recommendedAction = recommendedAction,
+                confidence = confidence,
+                trendAnalysis = trendAnalysis
             )
         } catch (e: Exception) {
-            e.printStackTrace()
+            android.util.Log.e("HealthMonitoringService", 
+                "Failed to parse LLM response: $jsonContent", e)
             HealthAnalysisResult(
                 isAbnormal = false,
                 riskScore = 0f,
-                alertReason = "Failed to parse analysis",
+                alertReason = "Failed to parse analysis: ${e.message}",
                 recommendedAction = "Use manual monitoring",
                 confidence = 0f,
                 trendAnalysis = "Parse error"

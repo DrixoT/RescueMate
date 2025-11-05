@@ -1,5 +1,7 @@
 package com.rescuemate.ui.screens
 
+import android.util.Log
+import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -12,10 +14,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.rescuemate.R
+import com.rescuemate.data.repository.EmergencyRepository
+import com.rescuemate.emergency.data.EmergencyContact
 import com.rescuemate.ui.theme.*
 
 @Composable
@@ -23,11 +28,83 @@ fun AddContactScreen(
     onBack: () -> Unit,
     onSave: () -> Unit
 ) {
+    val context = LocalContext.current
+    val repository = remember { EmergencyRepository(context) }
+
     var isPrimary by remember { mutableStateOf(false) }
     var name by remember { mutableStateOf("") }
     var relationship by remember { mutableStateOf("") }
     var phone by remember { mutableStateOf("") }
     var email by remember { mutableStateOf("") }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
+    var isLoading by remember { mutableStateOf(false) }
+
+    Log.d("AddContactScreen", "🎨 Screen rendered - isPrimary: $isPrimary")
+
+    // Function to save contact
+    fun saveContact() {
+        Log.d("AddContactScreen", "💾 SAVE BUTTON CLICKED - Starting validation and save process")
+        Log.d(
+            "AddContactScreen",
+            "📝 Input values: name='$name', phone='$phone', relationship='$relationship', email='$email', isPrimary=$isPrimary"
+        )
+
+        // Validate inputs
+        val validation = repository.validateContact(name, phone, relationship)
+        if (!validation.isValid) {
+            Log.w("AddContactScreen", "❌ Validation failed: ${validation.message}")
+            errorMessage = validation.message
+            Toast.makeText(context, "❌ ${validation.message}", Toast.LENGTH_LONG).show()
+            return
+        }
+
+        Log.d("AddContactScreen", "✅ Validation passed - Creating contact object")
+
+        // Validate email if provided
+        if (email.isNotBlank()) {
+            val emailValidation = repository.validateEmail(email)
+            if (!emailValidation.isValid) {
+                Log.w("AddContactScreen", "❌ Email validation failed: ${emailValidation.message}")
+                errorMessage = emailValidation.message
+                Toast.makeText(context, "❌ ${emailValidation.message}", Toast.LENGTH_LONG).show()
+                return
+            }
+        }
+
+        isLoading = true
+        errorMessage = null
+
+        // Create contact object
+        val contact = EmergencyContact(
+            name = name.trim(),
+            phoneNumber = phone.trim(),
+            relationship = relationship,
+            email = email.trim().ifBlank { null },
+            isPrimaryContact = isPrimary,
+            priority = if (isPrimary) 1 else 2
+        )
+
+        Log.d("AddContactScreen", "📞 Contact object created: $contact")
+        Log.d("AddContactScreen", "💾 Calling repository.addContact()...")
+
+        // Save to database
+        val success = repository.addContact(contact)
+
+        isLoading = false
+
+        if (success) {
+            Log.d("AddContactScreen", "✅ Contact saved successfully to database!")
+            Toast.makeText(context, "✅ Contact saved: ${contact.name}", Toast.LENGTH_SHORT).show()
+
+            // Navigate back after successful save
+            Log.d("AddContactScreen", "🧭 Navigating back to contacts list")
+            onSave()
+        } else {
+            Log.e("AddContactScreen", "❌ Failed to save contact to database")
+            errorMessage = "Failed to save contact. Please try again."
+            Toast.makeText(context, "❌ Failed to save contact", Toast.LENGTH_LONG).show()
+        }
+    }
 
     Box(
         modifier = Modifier
@@ -155,13 +232,19 @@ fun AddContactScreen(
 
                     OutlinedTextField(
                         value = name,
-                        onValueChange = { name = it },
+                        onValueChange = {
+                            name = it
+                            errorMessage = null
+                            Log.d("AddContactScreen", "📝 Name input changed: '$it'")
+                        },
                         label = { Text("Full Name *") },
                         modifier = Modifier.fillMaxWidth(),
                         colors = textFieldColors(),
-                        singleLine = true
+                        singleLine = true,
+                        isError = errorMessage?.contains("name", ignoreCase = true) == true
                     )
 
+                    // Relationship Dropdown
                     var expanded by remember { mutableStateOf(false) }
                     Box(modifier = Modifier.fillMaxWidth()) {
                         OutlinedTextField(
@@ -171,6 +254,7 @@ fun AddContactScreen(
                             modifier = Modifier.fillMaxWidth(),
                             colors = textFieldColors(),
                             readOnly = true,
+                            isError = errorMessage?.contains("relationship", ignoreCase = true) == true,
                             trailingIcon = {
                                 IconButton(onClick = { expanded = true }) {
                                     Icon(
@@ -198,88 +282,160 @@ fun AddContactScreen(
                                     onClick = {
                                         relationship = option
                                         expanded = false
+                                        errorMessage = null
+                                        Log.d(
+                                            "AddContactScreen",
+                                            "📝 Relationship selected: '$option'"
+                                        )
                                     }
                                 )
                             }
                         }
                     }
 
+                    // Phone Number (REQUIRED)
                     OutlinedTextField(
                         value = phone,
-                        onValueChange = { phone = it },
+                        onValueChange = {
+                            phone = it
+                            errorMessage = null
+                            Log.d("AddContactScreen", "📝 Phone input changed: '$it'")
+                        },
                         label = { Text("Phone Number *") },
+                        placeholder = { Text("1234567890") },
+                        leadingIcon = {
+                            Icon(
+                                imageVector = Icons.Default.Phone,
+                                contentDescription = null,
+                                tint = CosmicPrimary
+                            )
+                        },
                         modifier = Modifier.fillMaxWidth(),
                         colors = textFieldColors(),
-                        singleLine = true
+                        singleLine = true,
+                        isError = errorMessage?.contains("phone", ignoreCase = true) == true
                     )
 
+                    // Email (OPTIONAL)
                     OutlinedTextField(
                         value = email,
-                        onValueChange = { email = it },
+                        onValueChange = {
+                            email = it
+                            errorMessage = null
+                            Log.d("AddContactScreen", "📝 Email input changed: '$it'")
+                        },
                         label = { Text("Email Address (Optional)") },
+                        placeholder = { Text("contact@example.com") },
+                        leadingIcon = {
+                            Icon(
+                                imageVector = Icons.Default.Email,
+                                contentDescription = null,
+                                tint = CosmicTextSecondary
+                            )
+                        },
                         modifier = Modifier.fillMaxWidth(),
                         colors = textFieldColors(),
-                        singleLine = true
+                        singleLine = true,
+                        isError = errorMessage?.contains("email", ignoreCase = true) == true
                     )
-                }
 
-                // Info Box
-                Card(
-                    colors = CardDefaults.cardColors(
-                        containerColor = CosmicCardHover.copy(alpha = 0.5f)
-                    ),
-                    border = CardDefaults.outlinedCardBorder().copy(
-                        brush = Brush.linearGradient(listOf(CosmicBorder, CosmicBorder))
-                    )
-                ) {
-                    Column(
-                        modifier = Modifier.padding(16.dp)
-                    ) {
-                        Text(
-                            text = "Important",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = CosmicTextSecondary,
-                            letterSpacing = 2.sp
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            text = "This contact will receive your location and status updates when you activate SOS. Make sure they can be reached 24/7.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = CosmicTextPrimary
-                        )
-                    }
-                }
-
-                // Buttons
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    OutlinedButton(
-                        onClick = onBack,
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(56.dp),
-                        colors = ButtonDefaults.outlinedButtonColors(
-                            contentColor = CosmicTextPrimary
+                    // Info Box
+                    Card(
+                        colors = CardDefaults.cardColors(
+                            containerColor = CosmicCardHover.copy(alpha = 0.5f)
                         ),
-                        border = ButtonDefaults.outlinedButtonBorder.copy(
+                        border = CardDefaults.outlinedCardBorder().copy(
                             brush = Brush.linearGradient(listOf(CosmicBorder, CosmicBorder))
                         )
                     ) {
-                        Text("Cancel")
+                        Column(
+                            modifier = Modifier.padding(16.dp)
+                        ) {
+                            Text(
+                                text = "Important",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = CosmicTextSecondary,
+                                letterSpacing = 2.sp
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                text = "This contact will receive your location and status updates when you activate SOS. Make sure they can be reached 24/7.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = CosmicTextPrimary
+                            )
+                        }
                     }
-                    Button(
-                        onClick = onSave,
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(56.dp),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = CosmicPrimary
-                        ),
-                        shape = MaterialTheme.shapes.extraLarge
+
+                    // Error Message Display
+                    if (errorMessage != null) {
+                        Card(
+                            colors = CardDefaults.cardColors(
+                                containerColor = MaterialTheme.colorScheme.errorContainer
+                            )
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(16.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Error,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.error,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = errorMessage!!,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.error
+                                )
+                            }
+                        }
+                    }
+
+                    // Buttons
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        Text("Save Contact")
+                        OutlinedButton(
+                            onClick = {
+                                Log.d("AddContactScreen", "❌ Cancel button clicked")
+                                onBack()
+                            },
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(56.dp),
+                            colors = ButtonDefaults.outlinedButtonColors(
+                                contentColor = CosmicTextPrimary
+                            ),
+                            border = ButtonDefaults.outlinedButtonBorder.copy(
+                                brush = Brush.linearGradient(listOf(CosmicBorder, CosmicBorder))
+                            )
+                        ) {
+                            Text("Cancel")
+                        }
+                        Button(
+                            onClick = { saveContact() },
+                            enabled = !isLoading,
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(56.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = CosmicPrimary
+                            ),
+                            shape = MaterialTheme.shapes.extraLarge
+                        ) {
+                            if (isLoading) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(24.dp),
+                                    color = Color.White,
+                                    strokeWidth = 2.dp
+                                )
+                            } else {
+                                Text("Save Contact")
+                            }
+                        }
                     }
                 }
             }

@@ -1,9 +1,11 @@
 package com.rescuemate.emergency.twilio
 
 import android.content.Context
+import android.util.Log
 import com.rescuemate.emergency.EmergencyConstants
 import com.rescuemate.emergency.data.*
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -25,12 +27,16 @@ class TwilioEmergencyService(private val context: Context) {
     )
 
     private val client = OkHttpClient.Builder()
-        .connectTimeout(30, TimeUnit.SECONDS)
+        .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(30, TimeUnit.SECONDS)
+        .writeTimeout(15, TimeUnit.SECONDS)
+        .retryOnConnectionFailure(true)
         .build()
-
+    
     companion object {
         private const val TAG = "TwilioEmergencyService"
+        private const val MAX_RETRIES = 2
+        private const val RETRY_DELAY_MS = 2000L
     }
 
     /**
@@ -39,16 +45,23 @@ class TwilioEmergencyService(private val context: Context) {
     suspend fun sendEmergencyContactAlert(
         event: EmergencyEvent
     ): Result<EmergencyApiResponse> = withContext(Dispatchers.IO) {
-        try {
+        return@withContext executeWithRetry(
+            operation = "sendEmergencyContactAlert",
+            eventId = event.id
+        ) {
             val backendUrl = getBackendUrl()
             if (backendUrl.isEmpty()) {
-                return@withContext Result.failure(
-                    Exception(EmergencyConstants.ERROR_BACKEND_UNREACHABLE)
-                )
+                throw Exception(EmergencyConstants.ERROR_BACKEND_UNREACHABLE)
             }
 
             val requestBody = buildContactAlertRequest(event)
-            val url = "$backendUrl${EmergencyConstants.API_EMERGENCY_CONTACT_ALERT}"
+            val url = if (backendUrl.endsWith("/")) {
+                "${backendUrl}api/emergency/contact-alert"
+            } else {
+                "$backendUrl/api/emergency/contact-alert"
+            }
+
+            Log.d(TAG, "Sending emergency alert to: $url")
 
             val request = Request.Builder()
                 .url(url)
@@ -60,19 +73,21 @@ class TwilioEmergencyService(private val context: Context) {
             val response = client.newCall(request).execute()
 
             if (!response.isSuccessful) {
-                return@withContext Result.failure(
-                    Exception("Backend request failed: ${response.code} - ${response.message}")
-                )
+                val errorBody = response.body?.string() ?: "No error body"
+                Log.e(TAG, "Backend request failed: ${response.code} - $errorBody")
+                throw Exception("Backend request failed: ${response.code} - ${response.message}")
             }
 
             val responseBody = response.body?.string() ?: ""
+            Log.d(TAG, "Backend response: $responseBody")
+            
             val apiResponse = parseApiResponse(responseBody)
+            
+            if (!apiResponse.success) {
+                Log.w(TAG, "Backend returned success=false: ${apiResponse.error}")
+            }
 
-            Result.success(apiResponse)
-
-        } catch (e: Exception) {
-            e.printStackTrace()
-            Result.failure(e)
+            apiResponse
         }
     }
 
@@ -83,16 +98,24 @@ class TwilioEmergencyService(private val context: Context) {
         event: EmergencyEvent,
         contact: EmergencyContact
     ): Result<EmergencyApiResponse> = withContext(Dispatchers.IO) {
-        try {
+        return@withContext executeWithRetry(
+            operation = "callEmergencyContact",
+            eventId = event.id,
+            contactPhone = contact.phoneNumber
+        ) {
             val backendUrl = getBackendUrl()
             if (backendUrl.isEmpty()) {
-                return@withContext Result.failure(
-                    Exception(EmergencyConstants.ERROR_BACKEND_UNREACHABLE)
-                )
+                throw Exception(EmergencyConstants.ERROR_BACKEND_UNREACHABLE)
             }
 
             val requestBody = buildContactCallRequest(event, contact)
-            val url = "$backendUrl${EmergencyConstants.API_EMERGENCY_CONTACT_CALL}"
+            val url = if (backendUrl.endsWith("/")) {
+                "${backendUrl}api/emergency/contact-call"
+            } else {
+                "$backendUrl/api/emergency/contact-call"
+            }
+
+            Log.d(TAG, "Calling emergency contact: ${contact.name} at ${contact.phoneNumber}")
 
             val request = Request.Builder()
                 .url(url)
@@ -104,19 +127,21 @@ class TwilioEmergencyService(private val context: Context) {
             val response = client.newCall(request).execute()
 
             if (!response.isSuccessful) {
-                return@withContext Result.failure(
-                    Exception("Call request failed: ${response.code}")
-                )
+                val errorBody = response.body?.string() ?: "No error body"
+                Log.e(TAG, "Call request failed: ${response.code} - $errorBody")
+                throw Exception("Call request failed: ${response.code}")
             }
 
             val responseBody = response.body?.string() ?: ""
+            Log.d(TAG, "Call response: $responseBody")
+            
             val apiResponse = parseApiResponse(responseBody)
+            
+            if (apiResponse.success && apiResponse.callSid != null) {
+                Log.d(TAG, "Call initiated successfully: ${apiResponse.callSid}")
+            }
 
-            Result.success(apiResponse)
-
-        } catch (e: Exception) {
-            e.printStackTrace()
-            Result.failure(e)
+            apiResponse
         }
     }
 
@@ -127,16 +152,24 @@ class TwilioEmergencyService(private val context: Context) {
         event: EmergencyEvent,
         contact: EmergencyContact
     ): Result<EmergencyApiResponse> = withContext(Dispatchers.IO) {
-        try {
+        return@withContext executeWithRetry(
+            operation = "sendEmergencySMS",
+            eventId = event.id,
+            contactPhone = contact.phoneNumber
+        ) {
             val backendUrl = getBackendUrl()
             if (backendUrl.isEmpty()) {
-                return@withContext Result.failure(
-                    Exception(EmergencyConstants.ERROR_BACKEND_UNREACHABLE)
-                )
+                throw Exception(EmergencyConstants.ERROR_BACKEND_UNREACHABLE)
             }
 
             val requestBody = buildContactCallRequest(event, contact, "sms")
-            val url = "$backendUrl${EmergencyConstants.API_EMERGENCY_CONTACT_CALL}"
+            val url = if (backendUrl.endsWith("/")) {
+                "${backendUrl}api/emergency/contact-call"
+            } else {
+                "$backendUrl/api/emergency/contact-call"
+            }
+
+            Log.d(TAG, "Sending SMS to: ${contact.name} at ${contact.phoneNumber}")
 
             val request = Request.Builder()
                 .url(url)
@@ -148,19 +181,82 @@ class TwilioEmergencyService(private val context: Context) {
             val response = client.newCall(request).execute()
 
             if (!response.isSuccessful) {
-                return@withContext Result.failure(
-                    Exception("SMS request failed: ${response.code}")
-                )
+                val errorBody = response.body?.string() ?: "No error body"
+                Log.e(TAG, "SMS request failed: ${response.code} - $errorBody")
+                throw Exception("SMS request failed: ${response.code}")
             }
 
             val responseBody = response.body?.string() ?: ""
+            Log.d(TAG, "SMS response: $responseBody")
+            
             val apiResponse = parseApiResponse(responseBody)
+            
+            if (apiResponse.success) {
+                Log.d(TAG, "SMS sent successfully")
+            }
 
-            Result.success(apiResponse)
-
-        } catch (e: Exception) {
-            e.printStackTrace()
-            Result.failure(e)
+            apiResponse
+        }
+    }
+    
+    /**
+     * Execute API call with retry logic
+     */
+    private suspend fun <T> executeWithRetry(
+        operation: String,
+        eventId: String? = null,
+        contactPhone: String? = null,
+        block: suspend () -> T
+    ): Result<T> {
+        var lastException: Exception? = null
+        
+        for (attempt in 0..MAX_RETRIES) {
+            try {
+                val result = block()
+                if (attempt > 0) {
+                    Log.d(TAG, "$operation succeeded on retry attempt $attempt")
+                }
+                return Result.success(result)
+            } catch (e: java.net.SocketTimeoutException) {
+                lastException = e
+                Log.w(TAG, "$operation timeout on attempt ${attempt + 1}")
+                if (attempt < MAX_RETRIES) {
+                    delay(RETRY_DELAY_MS * (attempt + 1))
+                }
+            } catch (e: java.net.UnknownHostException) {
+                lastException = e
+                Log.e(TAG, "$operation network error: ${e.message}")
+                // Don't retry on DNS errors
+                break
+            } catch (e: Exception) {
+                lastException = e
+                Log.e(TAG, "$operation error on attempt ${attempt + 1}: ${e.message}")
+                if (attempt < MAX_RETRIES && isRetryableError(e)) {
+                    delay(RETRY_DELAY_MS * (attempt + 1))
+                } else {
+                    break
+                }
+            }
+        }
+        
+        Log.e(TAG, "$operation failed after ${MAX_RETRIES + 1} attempts", lastException)
+        return Result.failure(lastException ?: Exception("Unknown error"))
+    }
+    
+    /**
+     * Check if error is retryable
+     */
+    private fun isRetryableError(e: Exception): Boolean {
+        return when (e) {
+            is java.net.SocketTimeoutException,
+            is java.io.IOException -> true
+            else -> {
+                // Check error message for retryable patterns
+                val message = e.message?.lowercase() ?: ""
+                message.contains("timeout") || 
+                message.contains("connection") ||
+                message.contains("network")
+            }
         }
     }
 
@@ -315,6 +411,10 @@ class TwilioEmergencyService(private val context: Context) {
     ): String {
         val healthSummary = buildHealthSummary(event)
         val emergencyDetails = buildEmergencyDetails(event)
+        
+        // Load selected voice from SharedPreferences
+        val voicePrefs = context.getSharedPreferences("voice_ai_prefs", Context.MODE_PRIVATE)
+        val selectedVoiceId = voicePrefs.getString("selected_voice_id", "scOwDtmlUjD3prqpp97I") // Default to Sam
 
         val request = EmergencyContactCallRequest(
             userId = event.userId,
@@ -336,6 +436,7 @@ class TwilioEmergencyService(private val context: Context) {
             put("healthSummary", request.healthSummary)
             put("locationLink", request.locationLink)
             put("emergencyDetails", request.emergencyDetails)
+            put("voiceId", selectedVoiceId) // Add selected voice ID
         }.toString()
     }
 

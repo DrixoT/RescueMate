@@ -87,8 +87,14 @@ class ElevenLabsVoiceService(private val context: Context) {
     ): Result<String> = withContext(Dispatchers.IO) {
         try {
             if (apiKey.isEmpty()) {
-                return@withContext Result.failure(Exception("API key not set"))
+                android.util.Log.e("ElevenLabsVoiceService", "❌ API key not set!")
+                return@withContext Result.failure(Exception("API key not set. Please check your .env file and rebuild the app."))
             }
+            
+            android.util.Log.d("ElevenLabsVoiceService", "🎤 Generating speech:")
+            android.util.Log.d("ElevenLabsVoiceService", "   Text: ${text.take(50)}...")
+            android.util.Log.d("ElevenLabsVoiceService", "   Voice ID: $voiceId")
+            android.util.Log.d("ElevenLabsVoiceService", "   API Key set: Yes (${apiKey.take(10)}...)")
 
             val json = JSONObject().apply {
                 put("text", text)
@@ -115,10 +121,17 @@ class ElevenLabsVoiceService(private val context: Context) {
             val response = client.newCall(request).execute()
 
             if (!response.isSuccessful) {
+                val errorBody = response.body?.string() ?: "No error details"
+                android.util.Log.e("ElevenLabsVoiceService", "❌ API request failed:")
+                android.util.Log.e("ElevenLabsVoiceService", "   Status: ${response.code} - ${response.message}")
+                android.util.Log.e("ElevenLabsVoiceService", "   Error body: $errorBody")
+                android.util.Log.e("ElevenLabsVoiceService", "   API Key (first 10 chars): ${apiKey.take(10)}...")
                 return@withContext Result.failure(
-                    Exception("API request failed: ${response.code} - ${response.message}")
+                    Exception("API request failed: ${response.code} - ${response.message}. Details: $errorBody")
                 )
             }
+            
+            android.util.Log.d("ElevenLabsVoiceService", "✅ API request successful, downloading audio...")
 
             // Save audio to temporary file
             val audioFile = File(context.cacheDir, "emergency_voice_${System.currentTimeMillis()}.mp3")
@@ -128,9 +141,11 @@ class ElevenLabsVoiceService(private val context: Context) {
                 }
             }
 
+            android.util.Log.d("ElevenLabsVoiceService", "✅ Audio saved to: ${audioFile.absolutePath}")
             Result.success(audioFile.absolutePath)
 
         } catch (e: Exception) {
+            android.util.Log.e("ElevenLabsVoiceService", "❌ Exception during text-to-speech", e)
             Result.failure(e)
         }
     }

@@ -496,3 +496,61 @@ private fun isValidPhoneNumber(phone: String): Boolean {
     return phone.length >= 10
 }
 
+/**
+ * Reusable Dropdown Menu Field Component
+ */
+@Composable
+fun DropdownMenuField(
+    label: String,
+    selectedValue: String,
+    options: List<String>,
+    onValueChanged: (String) -> Unit,
+    isError: Boolean = false
+) {
+    var expanded by remember { mutableStateOf(false) }
+
+    Box(
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        OutlinedTextField(
+            value = selectedValue,
+            onValueChange = {},
+            label = { Text(label) },
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { expanded = true },
+            readOnly = true,
+            trailingIcon = {
+                Icon(
+                    imageVector = if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                    contentDescription = "Dropdown"
+                )
+            },
+            isError = isError,
+            supportingText = {
+                if (isError) {
+                    Text("$label is required", color = MaterialTheme.colorScheme.error)
+                }
+            }
+        )
+
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
+            modifier = Modifier
+                .fillMaxWidth(0.9f)
+                .background(MaterialTheme.colorScheme.surface)
+        ) {
+            options.forEach { option ->
+                DropdownMenuItem(
+                    text = { Text(option) },
+                    onClick = {
+                        onValueChanged(option)
+                        expanded = false
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        }
+    }
+}

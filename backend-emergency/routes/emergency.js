@@ -105,7 +105,7 @@ router.post('/contact-call', async (req, res) => {
         let result;
 
         if (messageType === 'voice') {
-            // Initiate voice call via Twilio
+            // Initiate voice call via Twilio with ElevenLabs integration
             result = await twilioService.makeEmergencyCall(
                 contactPhone,
                 contactName,
@@ -113,7 +113,9 @@ router.post('/contact-call', async (req, res) => {
                 healthSummary,
                 locationLink,
                 emergencyDetails,
-                emergencyId
+                emergencyId,
+                emergency.userInfo.age,
+                emergency.userInfo.medicalInfo || {}
             );
         } else if (messageType === 'sms') {
             // Send SMS via Twilio

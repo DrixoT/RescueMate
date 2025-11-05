@@ -1,5 +1,4 @@
 package com.rescuemate.emergency
-
 /**
  * Emergency SOS Module Constants
  * Centralized configuration for emergency system
@@ -84,6 +83,8 @@ object EmergencyConstants {
     const val PREF_KEY_VOLUME_BUTTON_ENABLED = "volume_button_enabled"
     const val PREF_KEY_SCHEDULED_CHECKIN_ENABLED = "scheduled_checkin_enabled"
     const val PREF_KEY_CHECKIN_INTERVAL_MINUTES = "checkin_interval_minutes"
+    const val PREF_KEY_SMARTWATCH_CONNECTED = "smartwatch_connected"
+    const val PREF_KEY_SMARTWATCH_NAME = "smartwatch_name"
 
     // API Endpoints (Relative to base URL)
     const val API_EMERGENCY_CONTACT_ALERT = "/api/emergency/contact-alert"
@@ -124,4 +125,6 @@ object EmergencyConstants {
     const val TWILIO_TTS_LANGUAGE = "en-US"
     const val TWILIO_SMS_SERVICE_NAME = "RescueMate Emergency"
 }
+
+
 

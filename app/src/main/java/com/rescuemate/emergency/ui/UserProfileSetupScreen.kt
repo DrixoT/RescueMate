@@ -17,7 +17,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -25,7 +24,6 @@ import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.rescuemate.emergency.data.MedicalInfo
 import com.rescuemate.emergency.data.database.EmergencyDatabaseHelper
-import java.io.File
 
 /**
  * Complete User Profile Setup Screen
@@ -329,3 +327,111 @@ fun UserProfileSetupScreen(
     }
 }
 
+
+/**
+ * Simple Date Picker Dialog
+ */
+@Composable
+fun DatePickerDialog(
+    onDateSelected: (String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var selectedDay by remember { mutableStateOf("01") }
+    var selectedMonth by remember { mutableStateOf("01") }
+    var selectedYear by remember { mutableStateOf("1990") }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Select Date of Birth") },
+        text = {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                // Day
+                OutlinedTextField(
+                    value = selectedDay,
+                    onValueChange = { newValue ->
+                        if (newValue.length <= 2) {
+                            val day = newValue.toIntOrNull()
+                            if (day != null && day in 1..31) {
+                                selectedDay = newValue.padStart(2, '0')
+                            } else if (newValue.isEmpty()) {
+                                selectedDay = newValue
+                            }
+                        }
+                    },
+                    label = { Text("DD") },
+                    modifier = Modifier.weight(1f),
+                    singleLine = true
+                )
+
+                // Month
+                OutlinedTextField(
+                    value = selectedMonth,
+                    onValueChange = { newValue ->
+                        if (newValue.length <= 2) {
+                            val month = newValue.toIntOrNull()
+                            if (month != null && month in 1..12) {
+                                selectedMonth = newValue.padStart(2, '0')
+                            } else if (newValue.isEmpty()) {
+                                selectedMonth = newValue
+                            }
+                        }
+                    },
+                    label = { Text("MM") },
+                    modifier = Modifier.weight(1f),
+                    singleLine = true
+                )
+
+                // Year
+                OutlinedTextField(
+                    value = selectedYear,
+                    onValueChange = { newValue ->
+                        if (newValue.length <= 4) {
+                            val year = newValue.toIntOrNull()
+                            if (year != null || newValue.isEmpty()) {
+                                selectedYear = newValue
+                            }
+                        }
+                    },
+                    label = { Text("YYYY") },
+                    modifier = Modifier.weight(1f),
+                    singleLine = true
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    val dateString = "$selectedDay/$selectedMonth/$selectedYear"
+                    if (isValidDate(selectedDay, selectedMonth, selectedYear)) {
+                        onDateSelected(dateString)
+                    }
+                }
+            ) {
+                Text("OK")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        }
+    )
+}
+
+/**
+ * Validate date format
+ */
+private fun isValidDate(day: String, month: String, year: String): Boolean {
+    val d = day.toIntOrNull() ?: return false
+    val m = month.toIntOrNull() ?: return false
+    val y = year.toIntOrNull() ?: return false
+
+    if (d < 1 || d > 31) return false
+    if (m < 1 || m > 12) return false
+    if (y < 1900 || y > 2025) return false
+
+    return true
+}

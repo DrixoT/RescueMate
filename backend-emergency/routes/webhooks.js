@@ -12,7 +12,7 @@ const twilio = require('twilio');
 
 /**
  * GET /api/webhooks/emergency-voice
- * Generate TwiML for emergency voice call
+ * Generate TwiML for emergency voice call (Twilio TTS fallback)
  */
 router.get('/emergency-voice', async (req, res) => {
     try {
@@ -38,6 +38,67 @@ router.get('/emergency-voice', async (req, res) => {
         logger.error('Emergency voice webhook error:', error);
         res.type('text/xml');
         res.send('<Response><Say>Error generating emergency message.</Say></Response>');
+    }
+});
+
+/**
+ * GET /api/webhooks/emergency-voice-elevenlabs
+ * Generate TwiML for emergency voice call using ElevenLabs audio
+ */
+router.get('/emergency-voice-elevenlabs', async (req, res) => {
+    try {
+        const {
+            emergencyId,
+            audioUrl,
+            userName,
+            contactName
+        } = req.query;
+
+        const twimlResponse = new twilio.twiml.VoiceResponse();
+
+        // Play ElevenLabs generated audio
+        if (audioUrl) {
+            // Build full URL for audio file
+            const baseUrl = process.env.EMERGENCY_WEBHOOK_URL?.replace('/api/webhooks', '') || 
+                          `http://${req.get('host')}`;
+            const fullAudioUrl = `${baseUrl}${audioUrl}`;
+
+            twimlResponse.play(fullAudioUrl);
+        } else {
+            // Fallback to text-to-speech if audio URL not provided
+            twimlResponse.say({
+                voice: 'Polly.Matthew',
+                language: 'en-US'
+            }, `Emergency Alert from RescueMate. ${userName} needs immediate assistance.`);
+        }
+
+        // Add response gathering
+        twimlResponse.gather({
+            numDigits: 1,
+            action: `/api/webhooks/emergency-response?emergencyId=${encodeURIComponent(emergencyId)}`,
+            method: 'POST',
+            timeout: 10
+        }).say({
+            voice: 'Polly.Matthew',
+            language: 'en-US'
+        }, `Press 1 if ${userName} is safe. Press 2 if you need help. Press 9 to repeat this message.`);
+
+        twimlResponse.say({
+            voice: 'Polly.Matthew',
+            language: 'en-US'
+        }, 'No response received. This message will repeat.');
+
+        twimlResponse.redirect(`/api/webhooks/emergency-voice-elevenlabs?${new URLSearchParams(req.query).toString()}`);
+
+        res.type('text/xml');
+        res.send(twimlResponse.toString());
+
+    } catch (error) {
+        logger.error('ElevenLabs emergency voice webhook error:', error);
+        const twimlResponse = new twilio.twiml.VoiceResponse();
+        twimlResponse.say('Error generating emergency message.');
+        res.type('text/xml');
+        res.send(twimlResponse.toString());
     }
 });
 

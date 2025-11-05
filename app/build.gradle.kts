@@ -4,6 +4,29 @@ plugins {
     id("kotlin-parcelize")
 }
 
+// Function to load .env file
+fun loadEnvVariables(): Map<String, String> {
+    val envFile = file("../.env")
+    val envMap = mutableMapOf<String, String>()
+
+    if (envFile.exists()) {
+        envFile.readLines().forEach { line ->
+            if (line.isNotBlank() && !line.startsWith("#")) {
+                val parts = line.split("=", limit = 2)
+                if (parts.size == 2) {
+                    val key = parts[0].trim()
+                    val value = parts[1].trim().removeSurrounding("'").removeSurrounding("\"")
+                    envMap[key] = value
+                }
+            }
+        }
+    }
+
+    return envMap
+}
+
+val envVariables = loadEnvVariables()
+
 android {
     namespace = "com.rescuemate"
     compileSdk = 34
@@ -19,6 +42,18 @@ android {
         vectorDrawables {
             useSupportLibrary = true
         }
+
+        // Add BuildConfig fields from .env
+        buildConfigField("String", "ELEVEN_API_KEY", "\"${envVariables["ELEVEN_API_KEY"] ?: ""}\"")
+        buildConfigField("String", "ELEVEN_AGENT_ID", "\"${envVariables["ELEVEN_AGENT_ID"] ?: ""}\"")
+        buildConfigField("String", "OPENAI_API_KEY", "\"${envVariables["OPENAI_API_KEY"] ?: ""}\"")
+        buildConfigField("String", "GOOGLE_MAPS_API_KEY", "\"${envVariables["GOOGLE_MAPS_API_KEY"] ?: ""}\"")
+        buildConfigField("String", "TWILIO_ACCOUNT_SID", "\"${envVariables["TWILIO_ACCOUNT_SID"] ?: ""}\"")
+        buildConfigField("String", "TWILIO_AUTH_TOKEN", "\"${envVariables["TWILIO_AUTH_TOKEN"] ?: ""}\"")
+        buildConfigField("String", "TWILIO_PHONE_NUMBER", "\"${envVariables["TWILIO_PHONE_NUMBER"] ?: ""}\"")
+
+        // Add manifest placeholders for API keys
+        manifestPlaceholders["GOOGLE_MAPS_API_KEY"] = envVariables["GOOGLE_MAPS_API_KEY"] ?: ""
     }
 
     buildTypes {
@@ -39,6 +74,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
     composeOptions {
         kotlinCompilerExtensionVersion = "1.5.15"
@@ -81,6 +117,9 @@ dependencies {
 
     // HTTP Client for ElevenLabs API & Emergency Backend
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    
+    // ElevenLabs Conversational AI SDK
+    implementation("io.elevenlabs:elevenlabs-android:0.3.0")
 
     // JSON parsing
     implementation("org.json:json:20231013")

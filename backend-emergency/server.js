@@ -69,6 +69,17 @@ mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/rescuemat
 .then(() => logger.info('Connected to MongoDB'))
 .catch(err => logger.error('MongoDB connection error:', err));
 
+// Static file serving for audio files
+const path = require('path');
+const expressStatic = require('express').static;
+app.use('/api/audio', expressStatic(path.join(__dirname, 'temp'), {
+    setHeaders: (res, filePath) => {
+        if (filePath.endsWith('.mp3')) {
+            res.setHeader('Content-Type', 'audio/mpeg');
+        }
+    }
+}));
+
 // Routes
 app.use('/api/emergency', emergencyRoutes);
 app.use('/api/twilio', twilioRoutes);

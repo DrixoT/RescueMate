@@ -31,6 +31,9 @@
 
     <!-- SMS Permission for messaging -->
     <uses-permission android:name="android.permission.SEND_SMS" />
+    
+    <!-- Audio Permission for voice conversation -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
 
     <!-- Network Permission for Maps -->
     <uses-permission android:name="android.permission.INTERNET" />
@@ -38,6 +41,10 @@
 
     <!-- Emergency Module Permissions -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_PHONE_CALL" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_HEALTH" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
@@ -57,7 +64,7 @@
         
         <meta-data
             android:name="com.google.android.geo.API_KEY"
-            android:value="AIzaSyARCRG-m4cjM0Sf88hKH-v6LgJNvvbJoxw" />
+            android:value="${GOOGLE_MAPS_API_KEY}" />
 
         <activity
             android:name=".MainActivity"
@@ -74,7 +81,7 @@
             android:name=".emergency.service.EmergencyBackgroundService"
             android:enabled="true"
             android:exported="false"
-            android:foregroundServiceType="location|phoneCall" />
+            android:foregroundServiceType="location|phoneCall|health" />
 
     </application>
 

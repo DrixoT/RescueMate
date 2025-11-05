@@ -15,18 +15,32 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import android.content.Context
+import androidx.compose.ui.platform.LocalContext
+import androidx.navigation.NavHostController
 import com.rescuemate.R
+import com.rescuemate.emergency.EmergencyConstants
 import com.rescuemate.ui.theme.*
+import com.rescuemate.ui.navigation.Screen
 
 @Composable
 fun SettingsScreen(
     onBack: () -> Unit,
     onNavigateToBluetooth: () -> Unit,
-    onNavigateToVoiceAI: () -> Unit = {}
+    onNavigateToVoiceAI: () -> Unit = {},
+    navController: NavHostController? = null
 ) {
+    val context = LocalContext.current
+    val prefs = context.getSharedPreferences(EmergencyConstants.PREF_NAME_EMERGENCY, Context.MODE_PRIVATE)
+    
     var autoSendAlert by remember { mutableStateOf(true) }
     var locationTracking by remember { mutableStateOf(true) }
     var soundAlerts by remember { mutableStateOf(true) }
+    
+    // Smartwatch connection state
+    var smartwatchConnected by remember { 
+        mutableStateOf(prefs.getBoolean(EmergencyConstants.PREF_KEY_SMARTWATCH_CONNECTED, false)) 
+    }
 
     Box(
         modifier = Modifier
@@ -177,12 +191,100 @@ fun SettingsScreen(
                             brush = Brush.linearGradient(listOf(CosmicBorder, CosmicBorder))
                         )
                     ) {
-                        SettingButton(
-                            icon = Icons.Default.Bluetooth,
-                            title = stringResource(R.string.connect_smartwatch),
-                            description = stringResource(R.string.connect_smartwatch_desc),
-                            onClick = onNavigateToBluetooth
-                        )
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            // Device Header
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                ) {
+                                    Surface(
+                                        color = CosmicCardHover,
+                                        shape = MaterialTheme.shapes.extraSmall
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Watch,
+                                            contentDescription = null,
+                                            modifier = Modifier
+                                                .padding(8.dp)
+                                                .size(20.dp),
+                                            tint = CosmicPrimary
+                                        )
+                                    }
+                                    Column {
+                                        Text(
+                                            text = "RescueMate Watch Pro",
+                                            style = MaterialTheme.typography.titleSmall,
+                                            color = CosmicTextPrimary
+                                        )
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = if (smartwatchConnected) Icons.Default.CheckCircle else Icons.Default.Circle,
+                                                contentDescription = null,
+                                                tint = if (smartwatchConnected) Color(0xFF4CAF50) else CosmicTextSecondary,
+                                                modifier = Modifier.size(12.dp)
+                                            )
+                                            Text(
+                                                text = if (smartwatchConnected) "Connected" else "Not Connected",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = if (smartwatchConnected) Color(0xFF4CAF50) else CosmicTextSecondary
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                            
+                            Spacer(modifier = Modifier.height(12.dp))
+                            
+                            // Connection Button
+                            Button(
+                                onClick = {
+                                    smartwatchConnected = !smartwatchConnected
+                                    prefs.edit().apply {
+                                        putBoolean(EmergencyConstants.PREF_KEY_SMARTWATCH_CONNECTED, smartwatchConnected)
+                                        if (smartwatchConnected) {
+                                            putString(EmergencyConstants.PREF_KEY_SMARTWATCH_NAME, "RescueMate Watch Pro")
+                                        }
+                                        apply()
+                                    }
+                                    val message = if (smartwatchConnected) {
+                                        "Smartwatch connected successfully"
+                                    } else {
+                                        "Smartwatch disconnected"
+                                    }
+                                    android.widget.Toast.makeText(context, message, android.widget.Toast.LENGTH_SHORT).show()
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = if (smartwatchConnected) Color(0xFFFF5252) else CosmicPrimary
+                                )
+                            ) {
+                                Icon(
+                                    imageVector = if (smartwatchConnected) Icons.Default.LinkOff else Icons.Default.Link,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(if (smartwatchConnected) "Disconnect" else "Connect")
+                            }
+                            
+                            if (!smartwatchConnected) {
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text(
+                                    text = "Note: Smartwatch required for health monitoring",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = CosmicTextSecondary,
+                                    fontStyle = androidx.compose.ui.text.font.FontStyle.Italic
+                                )
+                            }
+                        }
                     }
                 }
 
@@ -210,6 +312,44 @@ fun SettingsScreen(
                             title = stringResource(R.string.theme),
                             description = stringResource(R.string.cosmic_dark_default),
                             onClick = { /* Handle theme */ }
+                        )
+                    }
+                }
+
+                // Account Actions
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Text(
+                        text = "Account",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = CosmicTextSecondary,
+                        letterSpacing = 2.sp
+                    )
+
+                    Card(
+                        colors = CardDefaults.cardColors(
+                            containerColor = CosmicCard
+                        ),
+                        border = CardDefaults.outlinedCardBorder().copy(
+                            brush = Brush.linearGradient(listOf(CosmicBorder, CosmicBorder))
+                        )
+                    ) {
+                        SettingButton(
+                            icon = Icons.Default.Logout,
+                            title = "Sign Out",
+                            description = "Log out of your account",
+                            onClick = {
+                                val userPrefs = com.rescuemate.data.UserPreferences(context)
+                                userPrefs.logout()
+                                userPrefs.setOnboardingComplete(false)
+                                android.widget.Toast.makeText(context, "Signed out successfully", android.widget.Toast.LENGTH_SHORT).show()
+                                
+                                // Navigate to SignIn screen and clear back stack
+                                navController?.navigate(Screen.SignIn.route) {
+                                    popUpTo(0) { inclusive = true }
+                                }
+                            }
                         )
                     }
                 }
