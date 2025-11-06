@@ -6,6 +6,9 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -24,6 +27,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import android.content.Context
@@ -80,6 +84,7 @@ fun HomeDashboard(
     var aiAudioLevel by remember { mutableStateOf(0f) }
     var conversationStatus by remember { mutableStateOf("") }
     var aiConversationMode by remember { mutableStateOf("idle") } // idle, listening, speaking
+    var userTextInput by remember { mutableStateOf("") }
     
     // Error handling state
     var errorMessage by remember { mutableStateOf<String?>(null) }
@@ -497,6 +502,77 @@ fun HomeDashboard(
                         }
                     }
                 )
+            }
+
+            // Text Input for AI Testing (when voice is active)
+            if (isVoiceConversationActive) {
+                Spacer(modifier = Modifier.height(16.dp))
+                
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = CosmicCard
+                    ),
+                    shape = RoundedCornerShape(16.dp)
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        OutlinedTextField(
+                            value = userTextInput,
+                            onValueChange = { userTextInput = it },
+                            modifier = Modifier.weight(1f),
+                            placeholder = {
+                                Text(
+                                    "Type message to AI...",
+                                    color = CosmicTextSecondary
+                                )
+                            },
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedTextColor = CosmicTextPrimary,
+                                unfocusedTextColor = CosmicTextPrimary,
+                                focusedBorderColor = CosmicPrimary,
+                                unfocusedBorderColor = CosmicTextSecondary
+                            ),
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(
+                                imeAction = ImeAction.Send
+                            ),
+                            keyboardActions = KeyboardActions(
+                                onSend = {
+                                    if (userTextInput.isNotBlank()) {
+                                        conversationalService.sendUserMessage(userTextInput)
+                                        Log.d("HomeDashboard", "Sent text message: $userTextInput")
+                                        userTextInput = ""
+                                    }
+                                }
+                            )
+                        )
+                        
+                        IconButton(
+                            onClick = {
+                                if (userTextInput.isNotBlank()) {
+                                    conversationalService.sendUserMessage(userTextInput)
+                                    Log.d("HomeDashboard", "Sent text message: $userTextInput")
+                                    userTextInput = ""
+                                }
+                            },
+                            enabled = userTextInput.isNotBlank()
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Send,
+                                contentDescription = "Send message",
+                                tint = if (userTextInput.isNotBlank()) CosmicPrimary else CosmicTextSecondary
+                            )
+                        }
+                    }
+                }
             }
 
             Spacer(modifier = Modifier.weight(1f))

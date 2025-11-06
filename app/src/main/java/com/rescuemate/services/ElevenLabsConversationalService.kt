@@ -1,7 +1,9 @@
 package com.rescuemate.services
 
+import android.Manifest
 import android.content.Context
 import android.util.Log
+import androidx.core.content.ContextCompat
 import com.rescuemate.BuildConfig
 import io.elevenlabs.ConversationClient
 import io.elevenlabs.ConversationConfig
@@ -72,6 +74,17 @@ class ElevenLabsConversationalService(private val context: Context) {
         voiceId: String? = null,
         callbacks: ConversationCallbacks
     ) {
+        // Check microphone permission
+        if (ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.RECORD_AUDIO
+            ) != android.content.pm.PackageManager.PERMISSION_GRANTED
+        ) {
+            Log.e(TAG, "❌ RECORD_AUDIO permission not granted!")
+            callbacks.onError("Microphone permission required")
+            return
+        }
+        
         if (conversationSession != null) {
             Log.w(TAG, "Conversation already active")
             callbacks.onError("Conversation already in progress")
@@ -87,7 +100,7 @@ class ElevenLabsConversationalService(private val context: Context) {
         if (voiceId != null && voiceId.isNotBlank()) {
             Log.w(TAG, "⚠️ Voice override not supported in SDK 0.4.0")
             Log.w(TAG, "   Please configure voice in ElevenLabs agent dashboard")
-            Log.d(TAG, "   Requested voice ID: $voiceId")
+            Log.d(TAG, "   Requested voice ID: $voiceId (cannot be set via SDK)")
         } else {
             Log.d(TAG, "🎙️ Using agent's configured voice")
         }
@@ -98,8 +111,6 @@ class ElevenLabsConversationalService(private val context: Context) {
             // Create conversation configuration
             val config = ConversationConfig(
                 agentId = agentId,
-                // Note: SDK 0.4.0 doesn't support runtime voice override
-                // Voice must be configured in the ElevenLabs agent dashboard
                 onConnect = { convId ->
                     conversationId = convId
                     Log.d(TAG, "📱 Conversation connected: $convId")
@@ -126,7 +137,10 @@ class ElevenLabsConversationalService(private val context: Context) {
                     Log.w(TAG, "⚠️ Unhandled client tool call: $call")
                 },
                 onVadScore = { score ->
-                    // Voice Activity Detection score - use for audio level visualization
+                    // Voice Activity Detection - shows when user is speaking
+                    if (score > 0.1f) {
+                        Log.d(TAG, "🎤 Voice detected! VAD: $score")
+                    }
                     callbacks.onAudioLevelChange(score)
                 }
             )
@@ -137,6 +151,7 @@ class ElevenLabsConversationalService(private val context: Context) {
                     conversationSession = ConversationClient.startSession(config, context)
                     
                     Log.d(TAG, "\n✓ Conversation initialized successfully")
+                    Log.d(TAG, "📱 Microphone: ACTIVE")
                     Log.d(TAG, "Ready! Starting interactive voice conversation...")
                     Log.d(TAG, "Speak into your microphone to talk with the AI agent")
                     Log.d(TAG, "=" * 60)
