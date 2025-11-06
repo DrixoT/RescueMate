@@ -110,14 +110,20 @@ class EmergencyBackgroundService : Service() {
      */
     private fun acquireWakeLock() {
         try {
+            // Release existing wake lock if any
+            releaseWakeLock()
+            
             val powerManager = getSystemService(POWER_SERVICE) as PowerManager
             wakeLock = powerManager.newWakeLock(
                 PowerManager.PARTIAL_WAKE_LOCK,
                 "RescueMate::EmergencyServiceWakeLock"
             ).apply {
-                acquire(10 * 60 * 60 * 1000L /*10 hours*/)
+                // Use a reference-counted wake lock with timeout for safety
+                // Maximum 1 hour, will be re-acquired if service continues
+                acquire(60 * 60 * 1000L /*1 hour*/)
+                setReferenceCounted(false) // Ensure single acquisition
             }
-            android.util.Log.d("EmergencyBackgroundService", "Wake lock acquired")
+            android.util.Log.d("EmergencyBackgroundService", "Wake lock acquired (1 hour timeout)")
         } catch (e: Exception) {
             android.util.Log.e("EmergencyBackgroundService", "Failed to acquire wake lock", e)
         }
@@ -248,6 +254,10 @@ class EmergencyBackgroundService : Service() {
         llmApiKey: String?
     ) {
         android.util.Log.d("EmergencyBackgroundService", "Starting monitoring for user: $userId")
+
+        // Set service running flag for UI
+        val prefs = getSharedPreferences(EmergencyConstants.PREF_NAME_EMERGENCY, Context.MODE_PRIVATE)
+        prefs.edit().putBoolean("service_running", true).apply()
 
         // Check permissions (non-blocking)
         if (!checkPermissions()) {
@@ -521,6 +531,10 @@ class EmergencyBackgroundService : Service() {
     }
 
     private fun stopMonitoring() {
+        // Clear service running flag for UI
+        val prefs = getSharedPreferences(EmergencyConstants.PREF_NAME_EMERGENCY, Context.MODE_PRIVATE)
+        prefs.edit().putBoolean("service_running", false).apply()
+
         shakeDetection?.stopListening()
         fallDetection?.stopListening()
         healthMonitoringJob?.cancel()

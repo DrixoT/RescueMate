@@ -17,7 +17,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import android.content.Context
-import androidx.viewbinding.BuildConfig
+import com.rescuemate.BuildConfig
 import com.rescuemate.services.ElevenLabsVoiceService
 import com.rescuemate.ui.theme.*
 import kotlinx.coroutines.launch

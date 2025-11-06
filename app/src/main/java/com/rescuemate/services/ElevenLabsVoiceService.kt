@@ -170,22 +170,42 @@ class ElevenLabsVoiceService(private val context: Context) {
      * Play generated audio file
      */
     suspend fun playAudio(audioPath: String): Result<Unit> = withContext(Dispatchers.Main) {
+        var tempPlayer: MediaPlayer? = null
         try {
             stopAudio()
 
-            mediaPlayer = MediaPlayer().apply {
-                setDataSource(audioPath)
-                prepare()
-                setOnCompletionListener {
-                    // Reset when audio finishes playing
-                    android.util.Log.d("ElevenLabsVoiceService", "Audio playback completed")
-                    stopAudio()
+            tempPlayer = MediaPlayer().apply {
+                try {
+                    setDataSource(audioPath)
+                    prepare()
+                    setOnCompletionListener {
+                        // Reset when audio finishes playing
+                        android.util.Log.d("ElevenLabsVoiceService", "Audio playback completed")
+                        stopAudio()
+                    }
+                    setOnErrorListener { mp, what, extra ->
+                        android.util.Log.e("ElevenLabsVoiceService", "MediaPlayer error: what=$what, extra=$extra")
+                        stopAudio()
+                        true // Return true to indicate error was handled
+                    }
+                    start()
+                } catch (e: Exception) {
+                    // Clean up on failure
+                    release()
+                    throw e
                 }
-                start()
             }
 
+            // Only assign to class member after successful start
+            mediaPlayer = tempPlayer
             Result.success(Unit)
+
         } catch (e: Exception) {
+            android.util.Log.e("ElevenLabsVoiceService", "Failed to play audio", e)
+            // Ensure cleanup if not assigned to class member
+            if (tempPlayer != null && tempPlayer != mediaPlayer) {
+                tempPlayer.release()
+            }
             Result.failure(e)
         }
     }

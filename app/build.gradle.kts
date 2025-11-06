@@ -115,18 +115,19 @@ dependencies {
     // Permissions
     implementation("com.google.accompanist:accompanist-permissions:0.32.0")
 
-    // HTTP Client for ElevenLabs API & Emergency Backend
+    // HTTP Client for WebSocket support & Emergency Backend
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     
-    // ElevenLabs Conversational AI SDK
-    implementation("io.elevenlabs:elevenlabs-android:0.1.1")
+    // ElevenLabs Official SDK for Conversational AI
+    implementation("io.elevenlabs:elevenlabs-android:0.4.0")  
 
     // JSON parsing
-    implementation("org.json:json:20231013")
+    implementation("org.json:json:20230227")
 
     // Coroutines for async operations
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.7.3")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.7.3")
 
     // Image Loading (Coil)
     implementation("io.coil-kt:coil-compose:2.4.0")

@@ -1138,13 +1138,13 @@ fun QuickActionButton(
 
 /**
  * Check if emergency background service is running
+ * Uses SharedPreferences instead of deprecated getRunningServices API
  */
 private fun checkServiceRunning(context: Context): Boolean {
-    val activityManager = context.getSystemService(Context.ACTIVITY_SERVICE) as android.app.ActivityManager
-    val runningServices = activityManager.getRunningServices(Integer.MAX_VALUE)
-    return runningServices.any { 
-        it.service.className == EmergencyBackgroundService::class.java.name 
-    }
+    // Use SharedPreferences to track service state
+    // Service sets this flag when started, clears when stopped
+    val prefs = context.getSharedPreferences(EmergencyConstants.PREF_NAME_EMERGENCY, Context.MODE_PRIVATE)
+    return prefs.getBoolean("service_running", false)
 }
 
 /**
