@@ -51,10 +51,6 @@ fun WellnessAIConversationScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val conversationalService = remember { ElevenLabsConversationalService(context) }
-    val mockService = remember { com.rescuemate.services.MockConversationService(context) }
-    
-    // Demo mode toggle (for emulator testing)
-    var isDemoMode by remember { mutableStateOf(false) }
     
     // Load agent ID from prefs/BuildConfig
     val prefs = context.getSharedPreferences("voice_ai_prefs", Context.MODE_PRIVATE)
@@ -63,9 +59,6 @@ fun WellnessAIConversationScreen(
             prefs.getString("manual_agent_id", null) ?: com.rescuemate.BuildConfig.ELEVEN_AGENT_ID
         ) 
     }
-    
-    var showAgentIdDialog by remember { mutableStateOf(false) }
-    var tempAgentId by remember { mutableStateOf("") }
     
     // Check if agent ID is valid
     val isAgentIdValid = agentId.isNotEmpty() && agentId != "YOUR_AGENT_ID_HERE" && agentId != ""
@@ -101,9 +94,6 @@ fun WellnessAIConversationScreen(
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var canSendFeedback by remember { mutableStateOf(false) }
     val listState = rememberLazyListState()
-    
-    // Text input for demo mode
-    var textInput by remember { mutableStateOf("") }
     
     // Function to save conversation state to SharedPreferences
     fun saveConversationState(isActive: Boolean, mode: String) {
@@ -177,137 +167,6 @@ fun WellnessAIConversationScreen(
                 state = listState,
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                // Demo Mode Indicator
-                if (isDemoMode) {
-                    item {
-                        Card(
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = CardDefaults.cardColors(
-                                containerColor = Color(0xFFE3F2FD)
-                            ),
-                            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF2196F3))
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(16.dp),
-                                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    text = "🎭",
-                                    style = MaterialTheme.typography.headlineMedium
-                                )
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        text = "Demo Mode Active",
-                                        style = MaterialTheme.typography.titleSmall,
-                                        color = Color(0xFF1565C0),
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                    Spacer(modifier = Modifier.height(4.dp))
-                                    Text(
-                                        text = "Using simulated responses for emulator demo. On physical devices, this connects to real ElevenLabs AI.",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = Color(0xFF424242)
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-                
-                // Agent ID Warning (if invalid)
-                if (!isAgentIdValid && !isDemoMode) {
-                    item {
-                        Card(
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = CardDefaults.cardColors(
-                                containerColor = Color(0xFFFFF3CD)
-                            ),
-                            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFFFC107))
-                        ) {
-                            Column(
-                                modifier = Modifier.padding(16.dp),
-                                verticalArrangement = Arrangement.spacedBy(12.dp)
-                            ) {
-                                Row(
-                                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                                    verticalAlignment = Alignment.Top
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Warning,
-                                        contentDescription = null,
-                                        tint = Color(0xFFF57C00),
-                                        modifier = Modifier.size(24.dp)
-                                    )
-                                    Column {
-                                        Text(
-                                            text = "Agent ID Required",
-                                            style = MaterialTheme.typography.titleSmall,
-                                            color = Color(0xFF3E2723),
-                                            fontWeight = FontWeight.Bold
-                                        )
-                                        Spacer(modifier = Modifier.height(4.dp))
-                                        Text(
-                                            text = "To use voice conversation, you need an ElevenLabs Agent ID. Create an agent in your ElevenLabs dashboard, then enter the ID here.",
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = Color(0xFF5D4037),
-                                            lineHeight = 18.sp
-                                        )
-                                    }
-                                }
-                                Button(
-                                    onClick = { 
-                                        tempAgentId = ""
-                                        showAgentIdDialog = true 
-                                    },
-                                    modifier = Modifier.fillMaxWidth(),
-                                    colors = ButtonDefaults.buttonColors(
-                                        containerColor = Color(0xFFF57C00)
-                                    )
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Key,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(18.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Text("Enter Agent ID")
-                                }
-                            }
-                        }
-                    }
-                }
-                
-                // Error Message
-                errorMessage?.let { error ->
-                    item {
-                        Card(
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = CardDefaults.cardColors(
-                                containerColor = Color(0xFFFFEBEE)
-                            ),
-                            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFEF5350))
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(16.dp),
-                                horizontalArrangement = Arrangement.spacedBy(12.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Error,
-                                    contentDescription = null,
-                                    tint = Color(0xFFD32F2F),
-                                    modifier = Modifier.size(24.dp)
-                                )
-                                Text(
-                                    text = error,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = Color(0xFF5F2120),
-                                    modifier = Modifier.weight(1f)
-                                )
-                            }
-                        }
-                    }
-                }
                 
                 if (messages.isEmpty() && isAgentIdValid) {
                     item {
@@ -337,11 +196,7 @@ fun WellnessAIConversationScreen(
                                     fontWeight = FontWeight.Bold
                                 )
                                 Text(
-                                    text = if (isDemoMode) {
-                                        "Demo mode is active. Type a message to see simulated AI responses. Perfect for emulator demos!"
-                                    } else {
-                                        "Start the conversation by tapping the microphone button below. Share what's on your mind."
-                                    },
+                                    text = "Start the conversation by tapping the microphone button below. Share what's on your mind.",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = CosmicTextSecondary,
                                     lineHeight = 18.sp
@@ -428,69 +283,6 @@ fun WellnessAIConversationScreen(
                 }
             }
             
-            // Text Input for Demo Mode
-            if (isDemoMode && conversationState != ConversationState.IDLE) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    TextField(
-                        value = textInput,
-                        onValueChange = { textInput = it },
-                        modifier = Modifier.weight(1f),
-                        placeholder = { Text("Type your message...") },
-                        colors = androidx.compose.material3.TextFieldDefaults.colors(
-                            focusedContainerColor = CosmicCard,
-                            unfocusedContainerColor = CosmicCard,
-                            focusedIndicatorColor = CosmicPrimary,
-                            unfocusedIndicatorColor = CosmicBorder
-                        ),
-                        singleLine = true
-                    )
-                    IconButton(
-                        onClick = {
-                            if (textInput.isNotBlank()) {
-                                val userMessage = textInput.trim()
-                                textInput = ""
-                                
-                                // Add user message
-                                messages = messages + Message(userMessage, isUser = true)
-                                
-                                // Simulate AI response
-                                conversationState = ConversationState.SPEAKING
-                                scope.launch {
-                                    listState.animateScrollToItem(messages.size - 1)
-                                    
-                                    mockService.simulateConversation(
-                                        userInput = userMessage,
-                                        onThinking = {
-                                            // AI is thinking
-                                        },
-                                        onResponse = { response ->
-                                            messages = messages + Message(response, isUser = false)
-                                            conversationState = ConversationState.LISTENING
-                                            scope.launch {
-                                                listState.animateScrollToItem(messages.size - 1)
-                                            }
-                                        }
-                                    )
-                                }
-                            }
-                        },
-                        enabled = textInput.isNotBlank()
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Send,
-                            contentDescription = "Send message",
-                            tint = if (textInput.isNotBlank()) CosmicPrimary else CosmicTextSecondary
-                        )
-                    }
-                }
-            }
-            
             Spacer(modifier = Modifier.height(16.dp))
             
             // Control Buttons
@@ -505,52 +297,30 @@ fun WellnessAIConversationScreen(
                     onClick = {
                         errorMessage = null
                         
-                        if (isDemoMode) {
-                            // Demo Mode: Start mock conversation
-                            conversationState = ConversationState.CONNECTING
-                            mockService.startSession()
-                            
-                            scope.launch {
-                                delay(1000)
-                                conversationState = ConversationState.LISTENING
-                                saveConversationState(true, "listening")
-                                android.widget.Toast.makeText(
-                                    context,
-                                    "Demo mode ready! Type a message to see simulated responses",
-                                    android.widget.Toast.LENGTH_SHORT
-                                ).show()
-                            }
-                        } else {
-                            // Real Mode: Validate and start real conversation
-                            if (!isAgentIdValid) {
-                                errorMessage = "Please enter a valid Agent ID"
-                                return@Button
-                            }
-                            
-                            if (!hasRecordPermission) {
-                                permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
-                                return@Button
-                            }
-                            
-                            conversationState = ConversationState.CONNECTING
-                            
-                            // Load selected voice from SharedPreferences
-                            val voicePrefs = context.getSharedPreferences("voice_ai_prefs", Context.MODE_PRIVATE)
-                            val selectedVoiceId = voicePrefs.getString("selected_voice_id", null)
-                            
-                            conversationalService.startConversation(
+                        // Validate and start real conversation
+                        if (!isAgentIdValid) {
+                            errorMessage = "Please enter a valid Agent ID"
+                            return@Button
+                        }
+                        
+                        if (!hasRecordPermission) {
+                            permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                            return@Button
+                        }
+                        
+                        conversationState = ConversationState.CONNECTING
+                        
+                        // Load selected voice from SharedPreferences
+                        val voicePrefs = context.getSharedPreferences("voice_ai_prefs", Context.MODE_PRIVATE)
+                        val selectedVoiceId = voicePrefs.getString("selected_voice_id", null)
+                        
+                        conversationalService.startConversation(
                             agentId = agentId,
                             voiceId = selectedVoiceId,
                             callbacks = object : ElevenLabsConversationalService.ConversationCallbacks {
                                 override fun onConnect(conversationId: String) {
-                                    this@WellnessAIConversationScreen.conversationId = conversationId
                                     conversationState = ConversationState.LISTENING
                                     saveConversationState(true, "listening")
-                                    android.widget.Toast.makeText(
-                                        context,
-                                        "Connected! Start speaking",
-                                        android.widget.Toast.LENGTH_SHORT
-                                    ).show()
                                 }
                                 
                                 override fun onModeChange(mode: String) {
@@ -601,6 +371,11 @@ fun WellnessAIConversationScreen(
                                 override fun onCanSendFeedback(canSend: Boolean) {
                                     canSendFeedback = canSend
                                 }
+                                
+                                override fun onAudioLevelChange(level: Float) {
+                                    // Audio level callback for potential future UI enhancements
+                                    android.util.Log.d("WellnessAI", "Audio level: $level")
+                                }
                             }
                         )
                     },
@@ -639,46 +414,13 @@ fun WellnessAIConversationScreen(
                     }
                 }
                 
-                // Demo Mode Toggle
-                IconButton(
-                    onClick = {
-                        isDemoMode = !isDemoMode
-                        // Clear state when switching modes
-                        if (conversationalService.isActive()) {
-                            conversationalService.endConversation()
-                        }
-                        if (mockService.isSessionActive()) {
-                            mockService.endSession()
-                        }
-                        conversationState = ConversationState.IDLE
-                        messages = listOf()
-                        errorMessage = null
-                    },
-                    modifier = Modifier.size(56.dp)
-                ) {
-                    Icon(
-                        imageVector = if (isDemoMode) Icons.Default.PhoneEnabled else Icons.Default.PhonePaused,
-                        contentDescription = if (isDemoMode) "Switch to Real Mode" else "Switch to Demo Mode",
-                        tint = if (isDemoMode) Color(0xFF2196F3) else CosmicTextSecondary,
-                        modifier = Modifier.size(24.dp)
-                    )
-                }
-                
                 // End Conversation Button
                 OutlinedButton(
                     onClick = {
-                        if (isDemoMode) {
-                            if (mockService.isSessionActive()) {
-                                mockService.endSession()
-                                conversationState = ConversationState.DISCONNECTED
-                                saveConversationState(false, "idle")
-                            }
-                        } else {
-                            if (conversationalService.isActive()) {
-                                conversationalService.endConversation()
-                                conversationState = ConversationState.DISCONNECTED
-                                saveConversationState(false, "idle")
-                            }
+                        if (conversationalService.isActive()) {
+                            conversationalService.endConversation()
+                            conversationState = ConversationState.DISCONNECTED
+                            saveConversationState(false, "idle")
                         }
                         onBack()
                     },
@@ -696,78 +438,6 @@ fun WellnessAIConversationScreen(
                 }
             }
         }
-    }
-    
-    // Agent ID Input Dialog
-    if (showAgentIdDialog) {
-        AlertDialog(
-            onDismissRequest = { showAgentIdDialog = false },
-            title = {
-                Text(
-                    text = "Enter ElevenLabs Agent ID",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold
-                )
-            },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text(
-                        text = "Enter your ElevenLabs Agent ID to enable voice conversation:",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = CosmicTextSecondary
-                    )
-                    OutlinedTextField(
-                        value = tempAgentId,
-                        onValueChange = { tempAgentId = it },
-                        label = { Text("Agent ID") },
-                        placeholder = { Text("your_agent_id_here") },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = CosmicPrimary,
-                            focusedLabelColor = CosmicPrimary
-                        )
-                    )
-                    Text(
-                        text = "Create an agent in your ElevenLabs dashboard to get an Agent ID.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = CosmicTextSecondary,
-                        fontStyle = androidx.compose.ui.text.font.FontStyle.Italic
-                    )
-                }
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        if (tempAgentId.isNotEmpty()) {
-                            prefs.edit().putString("manual_agent_id", tempAgentId).apply()
-                            agentId = tempAgentId
-                            showAgentIdDialog = false
-                            errorMessage = null
-                            android.widget.Toast.makeText(
-                                context,
-                                "Agent ID saved successfully",
-                                android.widget.Toast.LENGTH_SHORT
-                            ).show()
-                        }
-                    },
-                    enabled = tempAgentId.isNotEmpty(),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = CosmicPrimary
-                    )
-                ) {
-                    Text("Save")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showAgentIdDialog = false }) {
-                    Text("Cancel", color = CosmicTextSecondary)
-                }
-            },
-            containerColor = CosmicCard,
-            titleContentColor = CosmicTextPrimary,
-            textContentColor = CosmicTextPrimary
-        )
     }
 }
 

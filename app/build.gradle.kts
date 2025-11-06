@@ -29,7 +29,7 @@ val envVariables = loadEnvVariables()
 
 android {
     namespace = "com.rescuemate"
-    compileSdk = 34
+    compileSdk = 35
 
     defaultConfig {
         applicationId = "com.rescuemate"
@@ -119,7 +119,7 @@ dependencies {
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     
     // ElevenLabs Conversational AI SDK
-    implementation("io.elevenlabs:elevenlabs-android:0.3.0")
+    implementation("io.elevenlabs:elevenlabs-android:0.1.1")
 
     // JSON parsing
     implementation("org.json:json:20231013")

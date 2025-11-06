@@ -83,22 +83,33 @@ class ElevenLabsVoiceService(private val context: Context) {
     suspend fun textToSpeech(
         text: String,
         voiceId: String = currentVoiceId,
-        settings: VoiceSettings = VoiceSettings()
+        settings: VoiceSettings = VoiceSettings(),
+        useCache: Boolean = false
     ): Result<String> = withContext(Dispatchers.IO) {
         try {
+            // Check cache if enabled
+            if (useCache) {
+                val cachedFile = File(context.cacheDir, "voice_preview_$voiceId.mp3")
+                if (cachedFile.exists() && cachedFile.length() > 0) {
+                    android.util.Log.d("ElevenLabsVoiceService", "✓ Using cached audio for voice: $voiceId")
+                    return@withContext Result.success(cachedFile.absolutePath)
+                }
+            }
+            
             if (apiKey.isEmpty()) {
-                android.util.Log.e("ElevenLabsVoiceService", "❌ API key not set!")
+                android.util.Log.e("ElevenLabsVoiceService", " API key not set!")
                 return@withContext Result.failure(Exception("API key not set. Please check your .env file and rebuild the app."))
             }
             
-            android.util.Log.d("ElevenLabsVoiceService", "🎤 Generating speech:")
+            android.util.Log.d("ElevenLabsVoiceService", " Generating speech:")
             android.util.Log.d("ElevenLabsVoiceService", "   Text: ${text.take(50)}...")
             android.util.Log.d("ElevenLabsVoiceService", "   Voice ID: $voiceId")
             android.util.Log.d("ElevenLabsVoiceService", "   API Key set: Yes (${apiKey.take(10)}...)")
+            android.util.Log.d("ElevenLabsVoiceService", "   Use cache: $useCache")
 
             val json = JSONObject().apply {
                 put("text", text)
-                put("model_id", "eleven_monolingual_v1")
+                put("model_id", "eleven_multilingual_v2")
                 put("voice_settings", JSONObject().apply {
                     put("stability", settings.stability)
                     put("similarity_boost", settings.similarityBoost)
@@ -122,7 +133,7 @@ class ElevenLabsVoiceService(private val context: Context) {
 
             if (!response.isSuccessful) {
                 val errorBody = response.body?.string() ?: "No error details"
-                android.util.Log.e("ElevenLabsVoiceService", "❌ API request failed:")
+                android.util.Log.e("ElevenLabsVoiceService", " API request failed:")
                 android.util.Log.e("ElevenLabsVoiceService", "   Status: ${response.code} - ${response.message}")
                 android.util.Log.e("ElevenLabsVoiceService", "   Error body: $errorBody")
                 android.util.Log.e("ElevenLabsVoiceService", "   API Key (first 10 chars): ${apiKey.take(10)}...")
@@ -131,21 +142,26 @@ class ElevenLabsVoiceService(private val context: Context) {
                 )
             }
             
-            android.util.Log.d("ElevenLabsVoiceService", "✅ API request successful, downloading audio...")
+            android.util.Log.d("ElevenLabsVoiceService", " API request successful, downloading audio...")
 
-            // Save audio to temporary file
-            val audioFile = File(context.cacheDir, "emergency_voice_${System.currentTimeMillis()}.mp3")
+            // Save audio to file (use voice-specific name if caching)
+            val audioFile = if (useCache) {
+                File(context.cacheDir, "voice_preview_$voiceId.mp3")
+            } else {
+                File(context.cacheDir, "emergency_voice_${System.currentTimeMillis()}.mp3")
+            }
+            
             response.body?.byteStream()?.use { input ->
                 FileOutputStream(audioFile).use { output ->
                     input.copyTo(output)
                 }
             }
 
-            android.util.Log.d("ElevenLabsVoiceService", "✅ Audio saved to: ${audioFile.absolutePath}")
+            android.util.Log.d("ElevenLabsVoiceService", " Audio saved to: ${audioFile.absolutePath}")
             Result.success(audioFile.absolutePath)
 
         } catch (e: Exception) {
-            android.util.Log.e("ElevenLabsVoiceService", "❌ Exception during text-to-speech", e)
+            android.util.Log.e("ElevenLabsVoiceService", " Exception during text-to-speech", e)
             Result.failure(e)
         }
     }
@@ -160,6 +176,11 @@ class ElevenLabsVoiceService(private val context: Context) {
             mediaPlayer = MediaPlayer().apply {
                 setDataSource(audioPath)
                 prepare()
+                setOnCompletionListener {
+                    // Reset when audio finishes playing
+                    android.util.Log.d("ElevenLabsVoiceService", "Audio playback completed")
+                    stopAudio()
+                }
                 start()
             }
 

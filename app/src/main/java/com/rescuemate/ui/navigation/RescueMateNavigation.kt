@@ -19,7 +19,6 @@ import com.rescuemate.ui.screens.LiveLocationScreen
 import com.rescuemate.ui.screens.SettingsScreen
 import com.rescuemate.ui.screens.UserProfileScreen
 import com.rescuemate.ui.screens.VoiceAISetupScreen
-import com.rescuemate.ui.screens.WellnessAIConversationScreen
 import com.rescuemate.ui.screens.PermissionRequestScreen
 import com.rescuemate.ui.screens.BluetoothPairingScreen as BTPairingScreen
 
@@ -92,7 +91,6 @@ fun RescueMateNavigation(
                         "settings" -> navController.navigate(Screen.Settings.route)
                         "profile" -> navController.navigate(Screen.Profile.route)
                         "voiceAI" -> navController.navigate(Screen.VoiceAI.route)
-                        "wellness_ai" -> navController.navigate(Screen.WellnessAI.route)
                     }
                 }
             )
@@ -181,14 +179,6 @@ fun RescueMateNavigation(
                     navController.popBackStack()
                 },
                 onComplete = {
-                    navController.popBackStack()
-                }
-            )
-        }
-        
-        composable(Screen.WellnessAI.route) {
-            WellnessAIConversationScreen(
-                onBack = {
                     navController.popBackStack()
                 }
             )

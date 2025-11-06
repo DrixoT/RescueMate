@@ -1,7 +1,6 @@
 package com.rescuemate.ui.screens
 
 import androidx.compose.animation.core.*
-import android.widget.Toast
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -24,6 +23,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import android.content.Context
@@ -37,12 +37,19 @@ import com.rescuemate.emergency.EmergencyConstants
 import com.rescuemate.emergency.EmergencyManager
 import com.rescuemate.emergency.service.EmergencyBackgroundService
 import com.rescuemate.emergency.health.HealthMonitoringService
+import com.rescuemate.services.ElevenLabsConversationalService
 import com.rescuemate.ui.theme.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import android.Manifest
+import android.content.pm.PackageManager
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
+import android.widget.Toast
 
 @Composable
 fun HomeDashboard(
@@ -51,12 +58,14 @@ fun HomeDashboard(
     val context = LocalContext.current
     val emergencyManager = remember { EmergencyManager(context) }
     val healthMonitoring = remember { HealthMonitoringService(context) }
+    val conversationalService = remember { ElevenLabsConversationalService(context) }
     
     // Cleanup resources when composable leaves composition
     DisposableEffect(Unit) {
         onDispose {
             Log.d("HomeDashboard", "Cleaning up resources")
             emergencyManager.cleanup()
+            conversationalService.cleanup()
         }
     }
     
@@ -66,9 +75,86 @@ fun HomeDashboard(
     var lastHealthCheck by remember { mutableStateOf<Long?>(null) }
     var currentEmergency by remember { mutableStateOf(emergencyManager.getCurrentEmergency()) }
     
-    // AI Conversation state
-    var isInAIConversation by remember { mutableStateOf(false) }
+    // Voice Conversation state
+    var isVoiceConversationActive by remember { mutableStateOf(false) }
+    var aiAudioLevel by remember { mutableStateOf(0f) }
+    var conversationStatus by remember { mutableStateOf("") }
     var aiConversationMode by remember { mutableStateOf("idle") } // idle, listening, speaking
+    
+    // Error handling state
+    var errorMessage by remember { mutableStateOf<String?>(null) }
+    var showErrorDialog by remember { mutableStateOf(false) }
+    
+    // SOS Confirmation Dialog state
+    var showSOSConfirmation by remember { mutableStateOf(false) }
+    var remainingSeconds by remember { mutableStateOf(10) }
+    var autoConfirmJob by remember { mutableStateOf<Job?>(null) }
+    val scope = rememberCoroutineScope()
+    
+    // Permission launcher for RECORD_AUDIO
+    val recordAudioLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted) {
+            // Permission granted, start conversation
+            scope.launch {
+                startVoiceConversation(
+                    context = context,
+                    conversationalService = conversationalService,
+                    onSuccess = { conversationId ->
+                        isVoiceConversationActive = true
+                        conversationStatus = "connected"
+                        // Save SharedPreferences state
+                        val conversationPrefs = context.getSharedPreferences("ai_conversation_state", Context.MODE_PRIVATE)
+                        conversationPrefs.edit().putBoolean("is_active", true).apply()
+                        Log.d("HomeDashboard", "Voice conversation connected: $conversationId")
+                    },
+                    onModeChange = { mode ->
+                        aiConversationMode = mode
+                        conversationStatus = mode
+                        Log.d("HomeDashboard", "Mode changed: $mode")
+                    },
+                    onStatusChange = { status ->
+                        conversationStatus = status
+                        Log.d("HomeDashboard", "Status: $status")
+                    },
+                    onMessage = { source, messageJson ->
+                        Log.d("HomeDashboard", "Message from $source: $messageJson")
+                    },
+                    onError = { error ->
+                        Log.e("HomeDashboard", "Conversation error: $error")
+                        isVoiceConversationActive = false
+                        conversationStatus = ""
+                        aiConversationMode = "idle"
+                        // Clear SharedPreferences state
+                        val conversationPrefs = context.getSharedPreferences("ai_conversation_state", Context.MODE_PRIVATE)
+                        conversationPrefs.edit().putBoolean("is_active", false).apply()
+                        errorMessage = error
+                        showErrorDialog = true
+                    },
+                    onDisconnect = {
+                        isVoiceConversationActive = false
+                        conversationStatus = ""
+                        aiConversationMode = "idle"
+                        // Clear SharedPreferences state
+                        val conversationPrefs = context.getSharedPreferences("ai_conversation_state", Context.MODE_PRIVATE)
+                        conversationPrefs.edit().putBoolean("is_active", false).apply()
+                        Log.d("HomeDashboard", "Voice conversation disconnected")
+                    },
+                    onCanSendFeedback = { canSend ->
+                        Log.d("HomeDashboard", "Can send feedback: $canSend")
+                    },
+                    onAudioLevelChange = { level ->
+                        aiAudioLevel = level
+                    }
+                )
+            }
+        } else {
+            // Permission denied
+            errorMessage = "Microphone permission is required for voice conversation. Please enable it in Settings."
+            showErrorDialog = true
+        }
+    }
     
     // Check service status periodically with error handling
     LaunchedEffect(Unit) {
@@ -97,7 +183,7 @@ fun HomeDashboard(
                 
                 // Check AI conversation state from SharedPreferences
                 val conversationPrefs = context.getSharedPreferences("ai_conversation_state", Context.MODE_PRIVATE)
-                isInAIConversation = conversationPrefs.getBoolean("is_active", false)
+                isVoiceConversationActive = conversationPrefs.getBoolean("is_active", false)
                 aiConversationMode = conversationPrefs.getString("mode", "idle") ?: "idle"
                 
                 delay(500L) // Update every 500ms for responsive animation
@@ -178,34 +264,17 @@ fun HomeDashboard(
                 lastHealthCheck = lastHealthCheck,
                 onStartMonitoring = {
                     try {
-                        // Check if smartwatch is connected
-                        val prefs = context.getSharedPreferences(EmergencyConstants.PREF_NAME_EMERGENCY, Context.MODE_PRIVATE)
-                        val smartwatchConnected = prefs.getBoolean(EmergencyConstants.PREF_KEY_SMARTWATCH_CONNECTED, false)
-                        
-                        if (!smartwatchConnected) {
-                            Log.w("HomeDashboard", "Smartwatch not connected")
-                            Toast.makeText(
-                                context,
-                                "Please connect a smartwatch in Settings → Devices to start monitoring",
-                                Toast.LENGTH_LONG
-                            ).show()
-                            return@MonitoringStatusCard
-                        }
-                        
                         // Check for required permissions before starting service
                         if (checkMonitoringPermissions(context)) {
                             startMonitoringService(context)
                             isMonitoringActive = true
                             Log.d("HomeDashboard", "Monitoring service started successfully")
-                            Toast.makeText(context, "Monitoring started - Stay safe!", Toast.LENGTH_SHORT).show()
                         } else {
                             Log.w("HomeDashboard", "Missing required permissions for monitoring")
-                            Toast.makeText(context, "Please grant all permissions in Settings", Toast.LENGTH_LONG).show()
                         }
                     } catch (e: Exception) {
                         Log.e("HomeDashboard", "Failed to start monitoring service", e)
                         isMonitoringActive = false
-                        Toast.makeText(context, "Error starting monitoring: ${e.message}", Toast.LENGTH_LONG).show()
                     }
                 },
                 onStopMonitoring = {
@@ -213,10 +282,8 @@ fun HomeDashboard(
                         stopMonitoringService(context)
                         isMonitoringActive = false
                         Log.d("HomeDashboard", "Monitoring service stopped")
-                        Toast.makeText(context, "Monitoring stopped", Toast.LENGTH_SHORT).show()
                     } catch (e: Exception) {
                         Log.e("HomeDashboard", "Failed to stop monitoring service", e)
-                        Toast.makeText(context, "Error stopping monitoring: ${e.message}", Toast.LENGTH_SHORT).show()
                     }
                 }
             )
@@ -297,14 +364,144 @@ fun HomeDashboard(
                             }
                         }
                     },
-                    isInAIConversation = isInAIConversation,
-                    aiConversationMode = aiConversationMode
+                    onTap = {
+                        // Single tap - Start or end voice conversation
+                        if (isVoiceConversationActive) {
+                            // End conversation
+                            conversationalService.endConversation()
+                            isVoiceConversationActive = false
+                            conversationStatus = ""
+                            aiConversationMode = "idle"
+                            // Clear SharedPreferences state
+                            val conversationPrefs = context.getSharedPreferences("ai_conversation_state", Context.MODE_PRIVATE)
+                            conversationPrefs.edit().putBoolean("is_active", false).apply()
+                        } else {
+                            // Validate configuration first
+                            val prefs = context.getSharedPreferences("voice_ai_prefs", Context.MODE_PRIVATE)
+                            val agentId = prefs.getString("agent_id", com.rescuemate.BuildConfig.ELEVEN_AGENT_ID) 
+                                ?: com.rescuemate.BuildConfig.ELEVEN_AGENT_ID
+                            
+                            // Check if agent ID is configured
+                            if (agentId.isBlank() || agentId == "YOUR_AGENT_ID_HERE") {
+                                errorMessage = "Voice AI is not configured. Please complete setup in Settings > Voice AI Setup."
+                                showErrorDialog = true
+                            } else {
+                                // Check for RECORD_AUDIO permission
+                                val hasPermission = ContextCompat.checkSelfPermission(
+                                    context,
+                                    Manifest.permission.RECORD_AUDIO
+                                ) == PackageManager.PERMISSION_GRANTED
+                                
+                                if (!hasPermission) {
+                                    // Request permission
+                                    recordAudioLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                                } else {
+                                    // Permission granted and config valid - start conversation
+                                    scope.launch {
+                                        startVoiceConversation(
+                                            context = context,
+                                            conversationalService = conversationalService,
+                                            onSuccess = { conversationId ->
+                                                isVoiceConversationActive = true
+                                                conversationStatus = "connected"
+                                                // Save SharedPreferences state
+                                                val conversationPrefs = context.getSharedPreferences("ai_conversation_state", Context.MODE_PRIVATE)
+                                                conversationPrefs.edit().putBoolean("is_active", true).apply()
+                                                Log.d("HomeDashboard", "Voice conversation connected: $conversationId")
+                                            },
+                                            onModeChange = { mode ->
+                                                aiConversationMode = mode
+                                                conversationStatus = mode
+                                                Log.d("HomeDashboard", "Mode changed: $mode")
+                                            },
+                                            onStatusChange = { status ->
+                                                conversationStatus = status
+                                                Log.d("HomeDashboard", "Status: $status")
+                                            },
+                                            onMessage = { source, messageJson ->
+                                                Log.d("HomeDashboard", "Message from $source: $messageJson")
+                                            },
+                                            onError = { error ->
+                                                Log.e("HomeDashboard", "Conversation error: $error")
+                                                isVoiceConversationActive = false
+                                                conversationStatus = ""
+                                                aiConversationMode = "idle"
+                                                // Clear SharedPreferences state
+                                                val conversationPrefs = context.getSharedPreferences("ai_conversation_state", Context.MODE_PRIVATE)
+                                                conversationPrefs.edit().putBoolean("is_active", false).apply()
+                                                errorMessage = error
+                                                showErrorDialog = true
+                                            },
+                                            onDisconnect = {
+                                                isVoiceConversationActive = false
+                                                conversationStatus = ""
+                                                aiConversationMode = "idle"
+                                                // Clear SharedPreferences state
+                                                val conversationPrefs = context.getSharedPreferences("ai_conversation_state", Context.MODE_PRIVATE)
+                                                conversationPrefs.edit().putBoolean("is_active", false).apply()
+                                                Log.d("HomeDashboard", "Voice conversation disconnected")
+                                            },
+                                            onCanSendFeedback = { canSend ->
+                                                Log.d("HomeDashboard", "Can send feedback: $canSend")
+                                            },
+                                            onAudioLevelChange = { level ->
+                                                aiAudioLevel = level
+                                            }
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    onNavigate = onNavigate,
+                    emergencyManager = emergencyManager,
+                    isInAIConversation = isVoiceConversationActive,
+                    aiConversationMode = aiConversationMode,
+                    audioLevel = aiAudioLevel,
+                    onShowConfirmation = {
+                        showSOSConfirmation = true
+                        remainingSeconds = 10
+                        
+                        // Auto-confirm after 10 seconds
+                        autoConfirmJob?.cancel()
+                        autoConfirmJob = scope.launch {
+                            while (remainingSeconds > 0 && showSOSConfirmation) {
+                                delay(1000)
+                                remainingSeconds--
+                            }
+                            if (showSOSConfirmation && remainingSeconds == 0) {
+                                // Auto-confirm - trigger emergency
+                                val prefs = context.getSharedPreferences(EmergencyConstants.PREF_NAME_EMERGENCY, Context.MODE_PRIVATE)
+                                val userId = prefs.getString("user_id", "user_${System.currentTimeMillis()}") ?: "user_${System.currentTimeMillis()}"
+                                val userName = prefs.getString("user_name", "User") ?: "User"
+                                val userAge = prefs.getInt("user_age", 0)
+                                val userPhone = prefs.getString("user_phone", "") ?: ""
+                                
+                                kotlinx.coroutines.CoroutineScope(Dispatchers.IO).launch {
+                                    try {
+                                        val userInfo = com.rescuemate.emergency.data.UserInfo(
+                                            userId = userId,
+                                            name = userName,
+                                            age = userAge,
+                                            phoneNumber = userPhone,
+                                            medicalInfo = emergencyManager.database.getMedicalInfo(userId) 
+                                                ?: com.rescuemate.emergency.data.MedicalInfo(userId = userId)
+                                        )
+                                        emergencyManager.triggerManualEmergency(userId, userInfo)
+                                    } catch (e: Exception) {
+                                        Log.e("HomeDashboard", "Error triggering manual emergency", e)
+                                    }
+                                }
+                                showSOSConfirmation = false
+                            }
+                        }
+                    }
                 )
             }
 
             Spacer(modifier = Modifier.weight(1f))
 
-            // Quick Action Buttons
+            // Quick Action Buttons - Always visible
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(16.dp)
@@ -354,6 +551,142 @@ fun HomeDashboard(
             }
         }
     }
+    
+    // SOS Confirmation Dialog
+    if (showSOSConfirmation) {
+        AlertDialog(
+            onDismissRequest = { /* Prevent dismiss by tapping outside */ },
+            title = {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Warning,
+                        contentDescription = null,
+                        tint = Color(0xFFFF5252),
+                        modifier = Modifier.size(28.dp)
+                    )
+                    Text(
+                        text = "SOS Activated",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text(
+                        text = "Emergency services will be contacted in $remainingSeconds seconds",
+                        style = MaterialTheme.typography.bodyLarge
+                    )
+                    LinearProgressIndicator(
+                        progress = (10 - remainingSeconds) / 10f,
+                        modifier = Modifier.fillMaxWidth(),
+                        color = Color(0xFFFF5252)
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        autoConfirmJob?.cancel()
+                        showSOSConfirmation = false
+                        // Trigger emergency immediately
+                        val prefs = context.getSharedPreferences(EmergencyConstants.PREF_NAME_EMERGENCY, Context.MODE_PRIVATE)
+                        val userId = prefs.getString("user_id", "user_${System.currentTimeMillis()}") ?: "user_${System.currentTimeMillis()}"
+                        val userName = prefs.getString("user_name", "User") ?: "User"
+                        val userAge = prefs.getInt("user_age", 0)
+                        val userPhone = prefs.getString("user_phone", "") ?: ""
+                        
+                        kotlinx.coroutines.CoroutineScope(Dispatchers.IO).launch {
+                            try {
+                                val userInfo = com.rescuemate.emergency.data.UserInfo(
+                                    userId = userId,
+                                    name = userName,
+                                    age = userAge,
+                                    phoneNumber = userPhone,
+                                    medicalInfo = emergencyManager.database.getMedicalInfo(userId) 
+                                        ?: com.rescuemate.emergency.data.MedicalInfo(userId = userId)
+                                )
+                                emergencyManager.triggerManualEmergency(userId, userInfo)
+                            } catch (e: Exception) {
+                                Log.e("SOS", "Error triggering emergency", e)
+                            }
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color(0xFFFF5252)
+                    )
+                ) {
+                    Text("Confirm Emergency")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        autoConfirmJob?.cancel()
+                        showSOSConfirmation = false
+                    }
+                ) {
+                    Text("Pressed by Mistake?", color = CosmicTextSecondary)
+                }
+            },
+            containerColor = CosmicCard,
+            titleContentColor = CosmicTextPrimary,
+            textContentColor = CosmicTextPrimary
+        )
+    }
+    
+    // Error Dialog
+    if (showErrorDialog && errorMessage != null) {
+        AlertDialog(
+            onDismissRequest = { 
+                showErrorDialog = false
+                errorMessage = null
+            },
+            title = {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Warning,
+                        contentDescription = null,
+                        tint = Color(0xFFFF9800),
+                        modifier = Modifier.size(28.dp)
+                    )
+                    Text(
+                        text = "Voice AI Error",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            },
+            text = {
+                Text(
+                    text = errorMessage!!,
+                    style = MaterialTheme.typography.bodyLarge
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showErrorDialog = false
+                        errorMessage = null
+                    },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = CosmicPrimary
+                    )
+                ) {
+                    Text("OK")
+                }
+            },
+            containerColor = CosmicCard,
+            titleContentColor = CosmicTextPrimary,
+            textContentColor = CosmicTextPrimary
+        )
+    }
 }
 
 @Composable
@@ -391,8 +724,13 @@ fun StatusBadge(
 @Composable
 fun SOSButton(
     onClick: () -> Unit,
+    onTap: () -> Unit,
+    onNavigate: (String) -> Unit,
+    emergencyManager: com.rescuemate.emergency.EmergencyManager,
     isInAIConversation: Boolean = false,
-    aiConversationMode: String = "idle"
+    aiConversationMode: String = "idle",
+    audioLevel: Float = 0f,
+    onShowConfirmation: () -> Unit
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -459,6 +797,25 @@ fun SOSButton(
         aiConversationMode == "listening" -> Color(0xFF4CAF50) // Green for listening
         aiConversationMode == "speaking" -> CosmicPrimary // Purple for speaking
         else -> CosmicPrimary
+    }
+    
+    // Animated border that pulses based on audio level
+    val borderWidth by animateFloatAsState(
+        targetValue = if (isInAIConversation && aiConversationMode == "speaking") {
+            8f + (audioLevel * 12f) // Pulse between 8-20dp based on audio
+        } else if (isInAIConversation) {
+            8f // Static when listening
+        } else {
+            0f // No border when idle
+        },
+        animationSpec = tween(durationMillis = 100),
+        label = "border_pulse"
+    )
+    
+    val borderColor = when (aiConversationMode) {
+        "speaking" -> Color(0xFFE91E63) // Pink when AI speaking
+        "listening" -> Color(0xFF4CAF50) // Green when listening
+        else -> Color.Transparent
     }
 
     Box(
@@ -562,11 +919,11 @@ fun SOSButton(
         Box(
             modifier = Modifier
                 .size(224.dp)
-                .pointerInput(Unit) {
+                .pointerInput(isInAIConversation, aiConversationMode) {
                     detectTapGestures(
                         onTap = {
-                            // Single tap - launch wellness AI conversation
-                            onNavigate("wellness_ai")
+                            // Single tap - toggle voice conversation
+                            onTap()
                         },
                         onPress = {
                             isPressed = true
@@ -578,7 +935,10 @@ fun SOSButton(
                             // Start hold timer
                             holdJob?.cancel()
                             holdJob = scope.launch {
-                                val holdDuration = 3000L // 3 seconds
+                                // Wait 1 second to differentiate tap from hold
+                                delay(1000L)
+                                
+                                val holdDuration = 3000L // Then 3 more seconds for hold animation
                                 val updateInterval = 50L
                                 val steps = (holdDuration / updateInterval).toInt()
                                 
@@ -587,36 +947,26 @@ fun SOSButton(
                                     holdProgress = i.toFloat() / steps
                                 }
                                 
-                                // Hold completed - trigger emergency with error handling
+                                // Hold completed - show confirmation dialog
                                 if (holdProgress >= 1f) {
                                     // Strong haptic feedback on completion
                                     hapticFeedback.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS)
                                     
-                                    // Check if emergency contacts exist
+                                    // Check if emergency contacts exist with null safety
                                     try {
-                                        val contacts = emergencyManager.database.getAllContacts()
+                                        val contacts = emergencyManager?.database?.getAllContacts() ?: emptyList()
                                         if (contacts.isEmpty()) {
-                                            withContext(Dispatchers.Main) {
-                                                Toast.makeText(
-                                                    context,
-                                                    "Please add at least one emergency contact first",
-                                                    Toast.LENGTH_LONG
-                                                ).show()
-                                            }
+                                            Log.w("SOS", "No emergency contacts configured")
                                             return@launch
                                         }
                                         
-                                        // Trigger emergency
-                                        onClick()
-                                    } catch (e: Exception) {
-                                        Log.e("HomeDashboard", "Error triggering emergency", e)
+                                        // Show confirmation dialog via callback
                                         withContext(Dispatchers.Main) {
-                                            Toast.makeText(
-                                                context,
-                                                "Failed to trigger SOS: ${e.message}",
-                                                Toast.LENGTH_LONG
-                                            ).show()
+                                            onShowConfirmation()
                                         }
+                                    } catch (e: Exception) {
+                                        Log.e("SOS", "Error: ${e.message}", e)
+                                        // Silent fail - no crash, no toast
                                     }
                                 }
                             }
@@ -635,7 +985,13 @@ fun SOSButton(
             Surface(
                 modifier = Modifier.fillMaxSize(),
                 shape = CircleShape,
-                color = Color.Transparent
+                color = Color.Transparent,
+                border = if (isInAIConversation && borderWidth > 0f) {
+                    androidx.compose.foundation.BorderStroke(
+                        width = borderWidth.dp,
+                        color = borderColor
+                    )
+                } else null
             ) {
                 Box(
                     modifier = Modifier
@@ -706,35 +1062,38 @@ fun SOSButton(
                         )
                     }
                     
-                    // Instruction text
-                    if (!isPressed) {
+                    // Status indicator when AI conversation is active
+                    if (isInAIConversation) {
                         Column(
                             modifier = Modifier
                                 .align(Alignment.BottomCenter)
-                                .padding(bottom = 16.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                                .padding(bottom = 20.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
                         ) {
-                            Text(
-                                text = "Tap: Talk to AI",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = Color.White.copy(alpha = 0.7f)
+                            // Status dot
+                            Box(
+                                modifier = Modifier
+                                    .size(12.dp)
+                                    .background(
+                                        color = when (aiConversationMode) {
+                                            "speaking" -> Color(0xFFE91E63)
+                                            "listening" -> Color(0xFF4CAF50)
+                                            else -> Color(0xFF2196F3)
+                                        },
+                                        shape = CircleShape
+                                    )
                             )
+                            Spacer(modifier = Modifier.height(4.dp))
                             Text(
-                                text = "Hold 3s: Emergency",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = Color.White.copy(alpha = 0.7f)
+                                text = when (aiConversationMode) {
+                                    "speaking" -> "AI Speaking"
+                                    "listening" -> "Listening"
+                                    else -> "Connected"
+                                },
+                                color = Color.White,
+                                fontSize = 10.sp
                             )
                         }
-                    } else {
-                        Text(
-                            text = "Hold for 3s",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = Color.White.copy(alpha = 0.7f),
-                            modifier = Modifier
-                                .align(Alignment.BottomCenter)
-                                .padding(bottom = 20.dp)
-                        )
                     }
                 }
             }
@@ -1048,5 +1407,64 @@ fun MonitoringStatusCard(
             }
         }
     }
+}
+
+/**
+ * Helper function to start voice conversation with proper error handling
+ */
+private fun startVoiceConversation(
+    context: Context,
+    conversationalService: ElevenLabsConversationalService,
+    onSuccess: (String) -> Unit,
+    onModeChange: (String) -> Unit,
+    onStatusChange: (String) -> Unit,
+    onMessage: (String, String) -> Unit,
+    onError: (String) -> Unit,
+    onDisconnect: () -> Unit,
+    onCanSendFeedback: (Boolean) -> Unit,
+    onAudioLevelChange: (Float) -> Unit
+) {
+    val prefs = context.getSharedPreferences("voice_ai_prefs", Context.MODE_PRIVATE)
+    val agentId = prefs.getString("agent_id", com.rescuemate.BuildConfig.ELEVEN_AGENT_ID) 
+        ?: com.rescuemate.BuildConfig.ELEVEN_AGENT_ID
+    val voiceId = prefs.getString("selected_voice_id", null)
+    
+    conversationalService.startConversation(
+        agentId = agentId,
+        voiceId = voiceId,
+        callbacks = object : ElevenLabsConversationalService.ConversationCallbacks {
+            override fun onConnect(conversationId: String) {
+                onSuccess(conversationId)
+            }
+            
+            override fun onModeChange(mode: String) {
+                onModeChange(mode)
+            }
+            
+            override fun onStatusChange(status: String) {
+                onStatusChange(status)
+            }
+            
+            override fun onMessage(source: String, messageJson: String) {
+                onMessage(source, messageJson)
+            }
+            
+            override fun onError(error: String) {
+                onError(error)
+            }
+            
+            override fun onDisconnect() {
+                onDisconnect()
+            }
+            
+            override fun onCanSendFeedback(canSend: Boolean) {
+                onCanSendFeedback(canSend)
+            }
+            
+            override fun onAudioLevelChange(level: Float) {
+                onAudioLevelChange(level)
+            }
+        }
+    )
 }
 

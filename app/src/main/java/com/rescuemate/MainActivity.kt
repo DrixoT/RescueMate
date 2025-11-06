@@ -107,6 +107,12 @@ class MainActivity : ComponentActivity() {
             permissionsToRequest.add(Manifest.permission.BODY_SENSORS)
         }
 
+        // Audio permission for voice conversation
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO)
+            != PackageManager.PERMISSION_GRANTED) {
+            permissionsToRequest.add(Manifest.permission.RECORD_AUDIO)
+        }
+
         // Request all needed permissions
         if (permissionsToRequest.isNotEmpty()) {
             Log.d(TAG, "Requesting permissions: ${permissionsToRequest.joinToString()}")
