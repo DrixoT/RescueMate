@@ -34,7 +34,8 @@ fun EmergencyContactManagementScreen(
     var showDeleteDialog by remember { mutableStateOf<EmergencyContact?>(null) }
 
     LaunchedEffect(Unit) {
-        contacts = dbHelper.getAllContacts()
+        val result = dbHelper.getAllContacts()
+        contacts = result.getOrNull() ?: emptyList()
     }
 
     Scaffold(
@@ -114,7 +115,8 @@ fun EmergencyContactManagementScreen(
                 Button(
                     onClick = {
                         dbHelper.deleteContact(contact.id)
-                        contacts = dbHelper.getAllContacts()
+                        val result = dbHelper.getAllContacts()
+                        contacts = result.getOrNull() ?: emptyList()
                         showDeleteDialog = null
                     },
                     colors = ButtonDefaults.buttonColors(
@@ -431,7 +433,7 @@ fun AddEmergencyContactScreen(
                         val result = dbHelper.insertContact(contact)
                         showSaveDialog = false
 
-                        if (result > 0) {
+                        if (result.getOrDefault(0L) > 0) {
                             showSuccessDialog = true
                         } else {
                             errorMessage = "Failed to save contact"

@@ -15,12 +15,18 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.graphics.Color
+import android.bluetooth.BluetoothDevice
+import android.os.Build
 import com.rescuemate.R
+import com.rescuemate.bluetooth.SmartwatchManager
+import com.rescuemate.emergency.health.HealthMonitoringService
 import com.rescuemate.ui.theme.*
 import com.rescuemate.utils.BluetoothHelper
 import com.rescuemate.utils.BluetoothDeviceInfo
 import com.rescuemate.utils.rememberBluetoothPermissionsState
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalPermissionsApi::class)
 @Composable
@@ -29,10 +35,18 @@ fun BluetoothPairingScreen(
 ) {
     val context = LocalContext.current
     val bluetoothHelper = remember { BluetoothHelper(context) }
+    val healthMonitoringService = remember { HealthMonitoringService(context) }
+    val smartwatchManager = remember { SmartwatchManager(context, healthMonitoringService) }
     val bluetoothPermissionsState = rememberBluetoothPermissionsState()
+    val scope = rememberCoroutineScope()
+    
     var isScanning by remember { mutableStateOf(false) }
     var devices by remember { mutableStateOf<List<BluetoothDeviceInfo>>(emptyList()) }
+    var bleDevices by remember { mutableStateOf<List<BluetoothDevice>>(emptyList()) }
     var pairingDevice by remember { mutableStateOf<BluetoothDeviceInfo?>(null) }
+    var isConnected by remember { mutableStateOf(false) }
+    var connectedDevice by remember { mutableStateOf<BluetoothDevice?>(null) }
+    var currentHeartRate by remember { mutableStateOf<Int?>(null) }
 
     LaunchedEffect(Unit) {
         if (!bluetoothPermissionsState.allPermissionsGranted) {
@@ -40,13 +54,40 @@ fun BluetoothPairingScreen(
         }
     }
 
+    // Setup BLE callbacks
+    LaunchedEffect(Unit) {
+        // Monitor connection state
+        // Note: In a real implementation, you'd use a callback or StateFlow
+        // For now, we'll check periodically
+    }
+
+    // Check connection status periodically
+    LaunchedEffect(Unit) {
+        while (true) {
+            isConnected = smartwatchManager.isConnected()
+            connectedDevice = smartwatchManager.getConnectedDevice()
+            currentHeartRate = smartwatchManager.getCurrentHeartRate()
+            kotlinx.coroutines.delay(1000)
+        }
+    }
+
     LaunchedEffect(bluetoothPermissionsState.allPermissionsGranted) {
         if (bluetoothPermissionsState.allPermissionsGranted && bluetoothHelper.isBluetoothEnabled()) {
-            isScanning = true
+            // Get paired devices
             val pairedDevices = bluetoothHelper.getPairedDevices()
             val smartwatchDevices = bluetoothHelper.filterSmartwatchDevices(pairedDevices)
             devices = smartwatchDevices
-            isScanning = false
+            
+            // Start BLE scanning if supported
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP && bluetoothHelper.isBLESupported()) {
+                isScanning = true
+                smartwatchManager.startScanning()
+                
+                // Stop scanning after 10 seconds
+                kotlinx.coroutines.delay(10000)
+                smartwatchManager.stopScanning()
+                isScanning = false
+            }
         }
     }
 
@@ -215,6 +256,94 @@ fun BluetoothPairingScreen(
                         }
                     }
                 } else {
+                    // Connection Status Card
+                    if (isConnected && connectedDevice != null) {
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(bottom = 16.dp),
+                            colors = CardDefaults.cardColors(
+                                containerColor = Color(0xFF4CAF50).copy(alpha = 0.2f)
+                            ),
+                            border = CardDefaults.outlinedCardBorder().copy(
+                                brush = Brush.linearGradient(listOf(Color(0xFF4CAF50), Color(0xFF4CAF50)))
+                            )
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(16.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.CheckCircle,
+                                        contentDescription = null,
+                                        tint = Color(0xFF4CAF50),
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                    Text(
+                                        text = "Connected: ${connectedDevice?.name ?: "Unknown"}",
+                                        style = MaterialTheme.typography.titleSmall,
+                                        color = Color(0xFF4CAF50)
+                                    )
+                                }
+                                if (currentHeartRate != null) {
+                                    Text(
+                                        text = "Heart Rate: $currentHeartRate BPM",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = CosmicTextPrimary
+                                    )
+                                }
+                                Button(
+                                    onClick = {
+                                        smartwatchManager.disconnect()
+                                        isConnected = false
+                                        connectedDevice = null
+                                    },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = Color(0xFFFF5252)
+                                    )
+                                ) {
+                                    Text("Disconnect")
+                                }
+                            }
+                        }
+                    }
+                    
+                    // Scan Button
+                    if (!isScanning && !isConnected) {
+                        Button(
+                            onClick = {
+                                isScanning = true
+                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                                    smartwatchManager.startScanning()
+                                    scope.launch {
+                                        kotlinx.coroutines.delay(10000)
+                                        smartwatchManager.stopScanning()
+                                        isScanning = false
+                                    }
+                                }
+                            },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(bottom = 16.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = CosmicPrimary
+                            )
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.BluetoothSearching,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Scan for Health Devices")
+                        }
+                    }
+                    
                     LazyColumn(
                         modifier = Modifier.weight(1f),
                         verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -223,11 +352,27 @@ fun BluetoothPairingScreen(
                             BluetoothDeviceCard(
                                 device = device,
                                 isPairing = pairingDevice?.address == device.address,
+                                isConnected = isConnected && connectedDevice?.address == device.address,
                                 onPairClick = {
                                     pairingDevice = device
-                                    // Handle pairing logic here
-                                    // For now, just simulate pairing
-                                    pairingDevice = null
+                                    scope.launch {
+                                        try {
+                                            val connected = smartwatchManager.connectToDevice(device.device)
+                                            if (connected) {
+                                                isConnected = true
+                                                connectedDevice = device.device
+                                            }
+                                        } catch (e: Exception) {
+                                            android.util.Log.e("BluetoothPairing", "Connection error", e)
+                                        } finally {
+                                            pairingDevice = null
+                                        }
+                                    }
+                                },
+                                onDisconnectClick = {
+                                    smartwatchManager.disconnect()
+                                    isConnected = false
+                                    connectedDevice = null
                                 }
                             )
                         }
@@ -242,7 +387,9 @@ fun BluetoothPairingScreen(
 fun BluetoothDeviceCard(
     device: BluetoothDeviceInfo,
     isPairing: Boolean,
-    onPairClick: () -> Unit
+    isConnected: Boolean = false,
+    onPairClick: () -> Unit,
+    onDisconnectClick: (() -> Unit)? = null
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -297,6 +444,26 @@ fun BluetoothDeviceCard(
                     color = CosmicPrimary,
                     strokeWidth = 2.dp
                 )
+            } else if (isConnected) {
+                Column(
+                    horizontalAlignment = Alignment.End,
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Text(
+                        text = "Connected",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Color(0xFF4CAF50)
+                    )
+                    if (onDisconnectClick != null) {
+                        TextButton(onClick = onDisconnectClick) {
+                            Text(
+                                text = "Disconnect",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = Color(0xFFFF5252)
+                            )
+                        }
+                    }
+                }
             } else if (!device.isPaired) {
                 Button(
                     onClick = onPairClick,
@@ -305,16 +472,22 @@ fun BluetoothDeviceCard(
                     )
                 ) {
                     Text(
-                        text = stringResource(R.string.pair),
+                        text = "Connect",
                         style = MaterialTheme.typography.labelSmall
                     )
                 }
             } else {
-                Text(
-                    text = stringResource(R.string.paired),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = CosmicPrimary
-                )
+                Button(
+                    onClick = onPairClick,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = CosmicPrimary
+                    )
+                ) {
+                    Text(
+                        text = "Connect",
+                        style = MaterialTheme.typography.labelSmall
+                    )
+                }
             }
         }
     }

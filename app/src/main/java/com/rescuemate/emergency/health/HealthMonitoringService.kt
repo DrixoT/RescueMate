@@ -2,10 +2,14 @@ package com.rescuemate.emergency.health
 
 import android.content.Context
 import android.content.SharedPreferences
+import com.rescuemate.ai.TinyLlamaInferenceService
 import com.rescuemate.emergency.EmergencyConstants
 import com.rescuemate.emergency.data.HealthData
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -18,6 +22,11 @@ import java.util.concurrent.TimeUnit
 /**
  * Health Monitoring Service with LLM Integration
  * Analyzes heart rate patterns and predicts potential emergencies
+ * 
+ * Priority order:
+ * 1. TinyLlama (PRIMARY) - Fast, offline, private
+ * 2. OpenAI GPT-4 (OPTIONAL) - Enhancement for critical cases when online
+ * 3. Rule-based (FALLBACK) - Always available
  */
 class HealthMonitoringService(private val context: Context) {
 
@@ -33,12 +42,32 @@ class HealthMonitoringService(private val context: Context) {
         .retryOnConnectionFailure(true)
         .build()
     
+    // TinyLlama - PRIMARY LLM (local, offline, private)
+    private val tinyLlamaService = TinyLlamaInferenceService(context)
+    private var isTinyLlamaInitialized = false
+    
     // Cache for LLM responses to avoid redundant calls
     private val analysisCache = mutableMapOf<String, Pair<HealthAnalysisResult, Long>>()
     private val CACHE_DURATION_MS = 60_000L // 1 minute cache
 
     private val heartRateHistory = mutableListOf<HeartRateReading>()
     private var baselineHeartRate: Int = prefs.getInt(EmergencyConstants.PREF_KEY_USER_BASELINE_HEART_RATE, 70)
+    
+    private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    
+    init {
+        // Initialize TinyLlama in background
+        scope.launch {
+            try {
+                isTinyLlamaInitialized = tinyLlamaService.initialize()
+                android.util.Log.d("HealthMonitoringService", 
+                    "TinyLlama initialization: ${if (isTinyLlamaInitialized) "SUCCESS" else "FAILED"}")
+            } catch (e: Exception) {
+                android.util.Log.e("HealthMonitoringService", "Failed to initialize TinyLlama", e)
+                isTinyLlamaInitialized = false
+            }
+        }
+    }
 
     companion object {
         private const val MAX_HISTORY_SIZE = 100 // Keep last 100 readings
@@ -102,12 +131,13 @@ class HealthMonitoringService(private val context: Context) {
 
     /**
      * Analyze current health status using LLM
+     * Priority: TinyLlama (PRIMARY) -> GPT-4 (OPTIONAL) -> Rule-based (FALLBACK)
      */
     suspend fun analyzeHealthStatus(
         currentHeartRate: Int,
         activityLevel: HealthData.ActivityLevel,
         isExercising: Boolean,
-        llmApiKey: String? = null
+        openAIApiKey: String? = null  // Optional enhancement
     ): HealthAnalysisResult = withContext(Dispatchers.IO) {
         try {
             // Get recent heart rate trend
@@ -126,26 +156,68 @@ class HealthMonitoringService(private val context: Context) {
                 return@withContext cachedResult
             }
 
-            // If we have LLM API key, enhance with AI analysis
-            if (!llmApiKey.isNullOrEmpty() && recentReadings.size >= 5) {
-                val llmResult = performLLMAnalysisWithRetry(
+            // PRIORITY 1: Try TinyLlama (PRIMARY - local, offline, private)
+            if (isTinyLlamaInitialized && tinyLlamaService.isAvailable() && recentReadings.size >= 5) {
+                val tinyLlamaResult = performTinyLlamaAnalysis(
+                    currentHeartRate,
+                    recentReadings,
+                    activityLevel,
+                    isExercising
+                )
+                
+                if (tinyLlamaResult != null) {
+                    android.util.Log.d("HealthMonitoringService", "TinyLlama analysis successful")
+                    // Cache the result
+                    cacheAnalysis(cacheKey, tinyLlamaResult)
+                    
+                    // PRIORITY 2: Optionally enhance with GPT-4 for critical cases (when online + user consent)
+                    if (tinyLlamaResult.riskScore >= 0.8f && 
+                        !openAIApiKey.isNullOrEmpty() && 
+                        recentReadings.size >= 5) {
+                        android.util.Log.d("HealthMonitoringService", 
+                            "High risk detected, attempting GPT-4 enhancement")
+                        val enhancedResult = performOpenAIAnalysisWithRetry(
+                            currentHeartRate,
+                            recentReadings,
+                            activityLevel,
+                            isExercising,
+                            openAIApiKey
+                        )
+                        if (enhancedResult != null) {
+                            android.util.Log.d("HealthMonitoringService", "GPT-4 enhancement successful")
+                            return@withContext enhancedResult
+                        }
+                    }
+                    
+                    return@withContext tinyLlamaResult
+                } else {
+                    android.util.Log.w("HealthMonitoringService", 
+                        "TinyLlama analysis failed, trying fallback")
+                }
+            }
+
+            // PRIORITY 2: Fallback to GPT-4 if TinyLlama unavailable (optional)
+            if (!openAIApiKey.isNullOrEmpty() && recentReadings.size >= 5) {
+                val gpt4Result = performOpenAIAnalysisWithRetry(
                     currentHeartRate,
                     recentReadings,
                     activityLevel,
                     isExercising,
-                    llmApiKey
+                    openAIApiKey
                 )
                 
-                if (llmResult != null) {
-                    // Cache the result
-                    cacheAnalysis(cacheKey, llmResult)
-                    return@withContext llmResult
+                if (gpt4Result != null) {
+                    android.util.Log.d("HealthMonitoringService", "GPT-4 analysis successful (fallback)")
+                    cacheAnalysis(cacheKey, gpt4Result)
+                    return@withContext gpt4Result
                 } else {
                     android.util.Log.w("HealthMonitoringService", 
-                        "LLM analysis failed, using basic analysis")
+                        "GPT-4 analysis failed, using basic analysis")
                 }
             }
 
+            // PRIORITY 3: Fallback to rule-based analysis
+            android.util.Log.d("HealthMonitoringService", "Using rule-based analysis (fallback)")
             basicAnalysis
 
         } catch (e: Exception) {
@@ -162,9 +234,34 @@ class HealthMonitoringService(private val context: Context) {
     }
     
     /**
-     * Perform LLM analysis with retry logic
+     * Perform TinyLlama analysis (PRIMARY - local, offline)
      */
-    private suspend fun performLLMAnalysisWithRetry(
+    private suspend fun performTinyLlamaAnalysis(
+        currentHeartRate: Int,
+        recentReadings: List<HeartRateReading>,
+        activityLevel: HealthData.ActivityLevel,
+        isExercising: Boolean
+    ): HealthAnalysisResult? = withContext(Dispatchers.IO) {
+        try {
+            val prompt = buildHealthAnalysisPrompt(currentHeartRate, recentReadings, activityLevel, isExercising)
+            
+            val response = tinyLlamaService.generateHealthAnalysis(prompt, maxTokens = 200)
+            
+            if (response != null) {
+                return@withContext parseHealthAnalysisResult(response)
+            }
+            
+            return@withContext null
+        } catch (e: Exception) {
+            android.util.Log.e("HealthMonitoringService", "TinyLlama analysis error", e)
+            return@withContext null
+        }
+    }
+
+    /**
+     * Perform OpenAI GPT-4 analysis with retry logic (OPTIONAL ENHANCEMENT)
+     */
+    private suspend fun performOpenAIAnalysisWithRetry(
         currentHeartRate: Int,
         recentReadings: List<HeartRateReading>,
         activityLevel: HealthData.ActivityLevel,
@@ -331,23 +428,6 @@ class HealthMonitoringService(private val context: Context) {
         )
     }
 
-    /**
-     * Perform LLM-enhanced health analysis using OpenAI
-     */
-    private suspend fun performLLMAnalysis(
-        currentHeartRate: Int,
-        recentReadings: List<HeartRateReading>,
-        activityLevel: HealthData.ActivityLevel,
-        isExercising: Boolean,
-        apiKey: String
-    ): HealthAnalysisResult? = withContext(Dispatchers.IO) {
-        try {
-            performOpenAIAnalysis(currentHeartRate, recentReadings, activityLevel, isExercising, apiKey)
-        } catch (e: Exception) {
-            e.printStackTrace()
-            null
-        }
-    }
 
     /**
      * OpenAI GPT-4 Health Analysis
@@ -455,7 +535,7 @@ class HealthMonitoringService(private val context: Context) {
 
 
     /**
-     * Build prompt for LLM analysis
+     * Build prompt for LLM analysis (optimized for TinyLlama)
      */
     private fun buildHealthAnalysisPrompt(
         currentHeartRate: Int,
@@ -463,32 +543,31 @@ class HealthMonitoringService(private val context: Context) {
         activityLevel: HealthData.ActivityLevel,
         isExercising: Boolean
     ): String {
-        val readingsText = recentReadings.takeLast(10).joinToString("\n") {
-            "Time: ${(System.currentTimeMillis() - it.timestamp) / 1000}s ago, HR: ${it.heartRate} BPM, Activity: ${it.activityLevel}"
+        val readingsText = recentReadings.takeLast(10).joinToString(", ") {
+            "${it.heartRate} BPM"
         }
 
-        return """
-            Analyze this cardiac health data for potential emergency:
-            
-            Current Status:
-            - Heart Rate: $currentHeartRate BPM
-            - Baseline Heart Rate: $baselineHeartRate BPM
-            - Activity Level: $activityLevel
-            - Currently Exercising: $isExercising
-            
-            Recent Readings (last 10):
-            $readingsText
-            
-            Provide risk assessment in JSON format:
-            {
-              "isAbnormal": true/false,
-              "riskScore": 0.0-1.0,
-              "alertReason": "Brief explanation",
-              "recommendedAction": "What to do",
-              "confidence": 0.0-1.0,
-              "trendAnalysis": "Trend description"
-            }
-        """.trimIndent()
+        return """You are a health assistant for elderly patients. Analyze these vital signs and provide a brief, clear interpretation.
+
+Current Vitals:
+- Heart Rate: $currentHeartRate BPM
+- Baseline Heart Rate: $baselineHeartRate BPM
+- Activity Level: $activityLevel
+- Currently Exercising: $isExercising
+
+Recent Heart Rate Readings: $readingsText
+
+Provide risk assessment in JSON format:
+{
+  "isAbnormal": true/false,
+  "riskScore": 0.0-1.0,
+  "alertReason": "Brief explanation",
+  "recommendedAction": "What to do",
+  "confidence": 0.0-1.0,
+  "trendAnalysis": "Trend description"
+}
+
+Keep response simple and clear for elderly users.""".trimIndent()
     }
 
     /**

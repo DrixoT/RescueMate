@@ -33,17 +33,21 @@ class EmergencyRepository(private val context: Context) {
             Log.d(TAG, "📞 Formatted phone: ${contact.phoneNumber} -> $formattedPhone")
             
             val result = dbHelper.insertContact(formattedContact)
-            if (result > 0) {
+            val insertId = result.getOrNull() ?: 0L
+            if (insertId > 0) {
                 Log.d(TAG, "✅ Contact added successfully: ${formattedContact.name}")
                 
                 // Verify the contact was saved correctly
-                val savedContacts = dbHelper.getAllContacts()
-                val savedContact = savedContacts.find { it.id == formattedContact.id || 
-                    (it.name == formattedContact.name && it.phoneNumber == formattedPhone) }
+                val savedContactsResult = dbHelper.getAllContacts()
+                val savedContacts = savedContactsResult.getOrNull() ?: emptyList()
+                val savedContact = savedContacts.find { contact -> 
+                    contact.id == formattedContact.id || 
+                    (contact.name == formattedContact.name && contact.phoneNumber == formattedPhone) 
+                }
                 
                 if (savedContact != null) {
                     Log.d(TAG, "✅ Verified contact persisted correctly: ${savedContact.name}")
-                    showToast("Contact added: ${formattedContact.name}")
+                    showToast("Contact added: ${savedContact.name}")
                     true
                 } else {
                     Log.w(TAG, "⚠️ Contact saved but verification failed")
@@ -65,7 +69,8 @@ class EmergencyRepository(private val context: Context) {
     fun getAllContacts(): List<EmergencyContact> {
         Log.d(TAG, " Retrieving all emergency contacts")
         return try {
-            val contacts = dbHelper.getAllContacts()
+            val contactsResult = dbHelper.getAllContacts()
+            val contacts = contactsResult.getOrNull() ?: emptyList()
             Log.d(TAG, " Retrieved ${contacts.size} contacts")
             contacts
         } catch (e: Exception) {
@@ -78,7 +83,8 @@ class EmergencyRepository(private val context: Context) {
         Log.d(TAG, " Deleting contact: $contactId")
         return try {
             val result = dbHelper.deleteContact(contactId)
-            if (result > 0) {
+            val deletedRows = result.getOrNull() ?: 0
+            if (deletedRows > 0) {
                 Log.d(TAG, " Contact deleted successfully")
                 showToast("Contact deleted")
                 true
@@ -105,7 +111,8 @@ class EmergencyRepository(private val context: Context) {
         Log.d(TAG, " Saving medical information for user: ${medicalInfo.userId}")
         return try {
             val result = dbHelper.insertOrUpdateMedicalInfo(medicalInfo)
-            if (result > 0) {
+            val insertId = result.getOrNull() ?: 0L
+            if (insertId > 0) {
                 Log.d(TAG, "✅ Medical info saved successfully")
                 showToast("Medical information saved")
                 true
@@ -125,7 +132,8 @@ class EmergencyRepository(private val context: Context) {
         val userId = userPrefs.getUserId()
         Log.d(TAG, "📖 Retrieving medical info for user: $userId")
         return try {
-            val medicalInfo = dbHelper.getMedicalInfo(userId)
+            val medicalInfoResult = dbHelper.getMedicalInfo(userId)
+            val medicalInfo = medicalInfoResult.getOrNull()
             if (medicalInfo != null) {
                 Log.d(TAG, "✅ Medical info retrieved successfully")
             } else {

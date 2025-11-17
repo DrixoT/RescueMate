@@ -62,7 +62,10 @@ fun UserMedicalProfileScreen(
     Log.d("MedicalProfile", "🎨 Screen loaded for userId: $userId")
 
     // Load existing data
-    val existingData = remember { dbHelper.getMedicalInfo(userId) }
+    val existingData = remember { 
+        val result = dbHelper.getMedicalInfo(userId)
+        result.getOrNull()
+    }
 
     // Photo State
     var profilePhotoUri by remember { mutableStateOf<Uri?>(null) }

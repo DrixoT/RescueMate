@@ -99,7 +99,13 @@ class EmergencyManager(private val context: Context) {
             Log.d("EmergencyManager", "📍 Location: ${locationData.address} (${locationData.latitude}, ${locationData.longitude})")
 
             // Get emergency contacts
-            val contacts = database.getAllContacts()
+            val contactsResult = database.getAllContacts()
+            if (contactsResult.isFailure) {
+                Log.e("EmergencyManager", "❌ Failed to get emergency contacts", contactsResult.exceptionOrNull())
+                return@withContext Result.failure(contactsResult.exceptionOrNull() ?: Exception("Failed to get contacts"))
+            }
+            
+            val contacts = contactsResult.getOrNull() ?: emptyList()
             if (contacts.isEmpty()) {
                 Log.e("EmergencyManager", "❌ No emergency contacts configured")
                 return@withContext Result.failure(
@@ -122,7 +128,11 @@ class EmergencyManager(private val context: Context) {
             )
 
             // Save to database
-            database.insertEmergencyEvent(event)
+            val insertResult = database.insertEmergencyEvent(event)
+            if (insertResult.isFailure) {
+                Log.e("EmergencyManager", "❌ Failed to save emergency event to database", insertResult.exceptionOrNull())
+                return@withContext Result.failure(insertResult.exceptionOrNull() ?: Exception("Failed to save emergency event"))
+            }
             currentEmergency = event
             
             Log.d("EmergencyManager", "✅ Emergency event created: ${event.id}")
@@ -155,7 +165,12 @@ class EmergencyManager(private val context: Context) {
                 address = "Location unavailable"
             )
 
-            val contacts = database.getAllContacts()
+            val contactsResult = database.getAllContacts()
+            if (contactsResult.isFailure) {
+                return@withContext Result.failure(contactsResult.exceptionOrNull() ?: Exception("Failed to get contacts"))
+            }
+            
+            val contacts = contactsResult.getOrNull() ?: emptyList()
             if (contacts.isEmpty()) {
                 return@withContext Result.failure(
                     Exception(EmergencyConstants.ERROR_NO_EMERGENCY_CONTACTS)
@@ -181,7 +196,10 @@ class EmergencyManager(private val context: Context) {
                 emergencyContacts = contacts
             )
 
-            database.insertEmergencyEvent(event)
+            val insertResult = database.insertEmergencyEvent(event)
+            if (insertResult.isFailure) {
+                return@withContext Result.failure(insertResult.exceptionOrNull() ?: Exception("Failed to save emergency event"))
+            }
             currentEmergency = event
 
             // For manual trigger, skip Phase 1 and go straight to Phase 2
@@ -206,7 +224,7 @@ class EmergencyManager(private val context: Context) {
             currentPhase = 1,
             phase1StartTime = System.currentTimeMillis()
         )
-        database.insertEmergencyEvent(updatedEvent)
+        database.insertEmergencyEvent(updatedEvent) // Result ignored here as event already saved
         currentEmergency = updatedEvent
 
         // Show user response notification
@@ -250,7 +268,7 @@ class EmergencyManager(private val context: Context) {
             currentPhase = 2,
             phase2StartTime = System.currentTimeMillis()
         )
-        database.insertEmergencyEvent(updatedEvent)
+        database.insertEmergencyEvent(updatedEvent) // Result ignored here as event already saved
         currentEmergency = updatedEvent
 
         // Show notification
@@ -430,7 +448,7 @@ class EmergencyManager(private val context: Context) {
             currentPhase = 3,
             phase3StartTime = System.currentTimeMillis()
         )
-        database.insertEmergencyEvent(updatedEvent)
+        database.insertEmergencyEvent(updatedEvent) // Result ignored here as event already saved
         currentEmergency = updatedEvent
 
         // Show notification about Phase 3

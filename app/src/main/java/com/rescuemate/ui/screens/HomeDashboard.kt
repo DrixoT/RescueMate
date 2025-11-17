@@ -360,7 +360,7 @@ fun HomeDashboard(
                                     name = userName,
                                     age = userAge,
                                     phoneNumber = userPhone,
-                                    medicalInfo = emergencyManager.database.getMedicalInfo(userId) 
+                                    medicalInfo = emergencyManager.database.getMedicalInfo(userId).getOrNull() 
                                         ?: com.rescuemate.emergency.data.MedicalInfo(userId = userId)
                                 )
                                 emergencyManager.triggerManualEmergency(userId, userInfo)
@@ -489,7 +489,7 @@ fun HomeDashboard(
                                             name = userName,
                                             age = userAge,
                                             phoneNumber = userPhone,
-                                            medicalInfo = emergencyManager.database.getMedicalInfo(userId) 
+                                            medicalInfo = emergencyManager.database.getMedicalInfo(userId).getOrNull() 
                                                 ?: com.rescuemate.emergency.data.MedicalInfo(userId = userId)
                                         )
                                         emergencyManager.triggerManualEmergency(userId, userInfo)
@@ -682,7 +682,7 @@ fun HomeDashboard(
                                     name = userName,
                                     age = userAge,
                                     phoneNumber = userPhone,
-                                    medicalInfo = emergencyManager.database.getMedicalInfo(userId) 
+                                    medicalInfo = emergencyManager.database.getMedicalInfo(userId).getOrNull() 
                                         ?: com.rescuemate.emergency.data.MedicalInfo(userId = userId)
                                 )
                                 emergencyManager.triggerManualEmergency(userId, userInfo)
@@ -1030,7 +1030,8 @@ fun SOSButton(
                                     
                                     // Check if emergency contacts exist with null safety
                                     try {
-                                        val contacts = emergencyManager?.database?.getAllContacts() ?: emptyList()
+                                        val contactsResult = emergencyManager?.database?.getAllContacts()
+                                        val contacts = contactsResult?.getOrNull() ?: emptyList()
                                         if (contacts.isEmpty()) {
                                             Log.w("SOS", "No emergency contacts configured")
                                             return@launch
@@ -1271,7 +1272,7 @@ private fun startMonitoringService(context: Context) {
         putExtra(EmergencyBackgroundService.EXTRA_ENABLE_SHAKE, true)
         putExtra(EmergencyBackgroundService.EXTRA_ENABLE_VOLUME, true)
         putExtra(EmergencyBackgroundService.EXTRA_ENABLE_HEALTH, true)
-        llmApiKey?.let { putExtra(EmergencyBackgroundService.EXTRA_LLM_API_KEY, it) }
+        llmApiKey?.let { putExtra(EmergencyBackgroundService.EXTRA_OPENAI_API_KEY, it) }
     }
     
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {

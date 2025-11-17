@@ -3,8 +3,11 @@ package com.rescuemate.utils
 import android.Manifest
 import android.app.Activity
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
+import android.provider.Settings
 import android.util.Log
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
@@ -219,8 +222,142 @@ class PermissionManager(private val context: Context) {
                 "Phone permission is required for emergency calling features."
             Manifest.permission.BODY_SENSORS -> 
                 "Body sensors permission is required to monitor your heart rate and health data."
+            Manifest.permission.RECORD_AUDIO ->
+                "Microphone access is required for voice AI conversation features."
+            Manifest.permission.POST_NOTIFICATIONS ->
+                "Notification permission is required to alert you during emergencies."
+            Manifest.permission.BLUETOOTH_CONNECT ->
+                "Bluetooth permission is required to connect to health monitoring devices."
             else -> 
                 "This permission is required for emergency features to work properly."
+        }
+    }
+    
+    /**
+     * Check if permission is permanently denied (don't ask again)
+     */
+    fun isPermissionPermanentlyDenied(activity: Activity, permission: String): Boolean {
+        return !activity.packageManager.canRequestPackageInstalls() &&
+                ContextCompat.checkSelfPermission(context, permission) != PackageManager.PERMISSION_GRANTED &&
+                !shouldShowRationale(activity, permission)
+    }
+    
+    /**
+     * Check if any essential permission is permanently denied
+     */
+    fun hasAnyPermanentlyDeniedPermission(activity: Activity): Boolean {
+        val essentialPermissions = listOf(
+            Manifest.permission.ACCESS_FINE_LOCATION,
+            Manifest.permission.SEND_SMS,
+            Manifest.permission.CALL_PHONE
+        )
+        
+        return essentialPermissions.any { permission ->
+            isPermissionPermanentlyDenied(activity, permission)
+        }
+    }
+    
+    /**
+     * Open app settings to allow user to grant permissions manually
+     */
+    fun openAppSettings() {
+        try {
+            val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                data = Uri.fromParts("package", context.packageName, null)
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            }
+            context.startActivity(intent)
+            Log.d(TAG, "Opened app settings for permission management")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to open app settings", e)
+            ErrorHandler.handle(
+                exception = e,
+                category = ErrorHandler.ErrorCategory.PERMISSION,
+                severity = ErrorHandler.ErrorSeverity.MEDIUM,
+                context = "Opening app settings"
+            )
+        }
+    }
+    
+    /**
+     * Check if permission is granted by name
+     */
+    fun hasPermission(permission: String): Boolean {
+        return ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED
+    }
+    
+    /**
+     * Check multiple permissions at once
+     */
+    fun hasPermissions(vararg permissions: String): Boolean {
+        return permissions.all { hasPermission(it) }
+    }
+    
+    /**
+     * Get friendly permission name for display
+     */
+    fun getPermissionFriendlyName(permission: String): String {
+        return when (permission) {
+            Manifest.permission.ACCESS_FINE_LOCATION, 
+            Manifest.permission.ACCESS_COARSE_LOCATION -> "Location"
+            Manifest.permission.SEND_SMS, 
+            Manifest.permission.READ_SMS -> "SMS"
+            Manifest.permission.CALL_PHONE -> "Phone"
+            Manifest.permission.BODY_SENSORS -> "Health Sensors"
+            Manifest.permission.RECORD_AUDIO -> "Microphone"
+            Manifest.permission.POST_NOTIFICATIONS -> "Notifications"
+            Manifest.permission.BLUETOOTH_CONNECT, 
+            Manifest.permission.BLUETOOTH_SCAN -> "Bluetooth"
+            Manifest.permission.READ_CONTACTS -> "Contacts"
+            Manifest.permission.CAMERA -> "Camera"
+            else -> permission.substringAfterLast(".")
+        }
+    }
+    
+    /**
+     * Handle permission result with error handling
+     */
+    fun handlePermissionResult(
+        activity: Activity,
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray,
+        onGranted: () -> Unit,
+        onDenied: (List<String>) -> Unit,
+        onPermanentlyDenied: (List<String>) -> Unit
+    ) {
+        if (permissions.isEmpty()) {
+            return
+        }
+        
+        val deniedPermissions = mutableListOf<String>()
+        val permanentlyDeniedPermissions = mutableListOf<String>()
+        
+        permissions.forEachIndexed { index, permission ->
+            if (grantResults.getOrNull(index) != PackageManager.PERMISSION_GRANTED) {
+                if (isPermissionPermanentlyDenied(activity, permission)) {
+                    permanentlyDeniedPermissions.add(permission)
+                    ErrorHandler.handlePermissionError(permission, isPermanentlyDenied = true)
+                } else {
+                    deniedPermissions.add(permission)
+                    ErrorHandler.handlePermissionError(permission, isPermanentlyDenied = false)
+                }
+            }
+        }
+        
+        when {
+            permanentlyDeniedPermissions.isNotEmpty() -> {
+                Log.w(TAG, "Permanently denied permissions: $permanentlyDeniedPermissions")
+                onPermanentlyDenied(permanentlyDeniedPermissions)
+            }
+            deniedPermissions.isNotEmpty() -> {
+                Log.w(TAG, "Denied permissions: $deniedPermissions")
+                onDenied(deniedPermissions)
+            }
+            else -> {
+                Log.d(TAG, "All permissions granted")
+                onGranted()
+            }
         }
     }
 }

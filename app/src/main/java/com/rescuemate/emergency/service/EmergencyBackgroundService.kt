@@ -16,6 +16,7 @@ import com.rescuemate.emergency.data.HealthData
 import com.rescuemate.emergency.data.MedicalInfo
 import com.rescuemate.emergency.data.UserInfo
 import com.rescuemate.emergency.detection.*
+import com.rescuemate.bluetooth.SmartwatchManager
 import com.rescuemate.emergency.health.HealthMonitoringService
 import com.rescuemate.emergency.health.MockSensorDataService
 import kotlinx.coroutines.*
@@ -29,6 +30,7 @@ class EmergencyBackgroundService : Service() {
     private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
     private lateinit var emergencyManager: EmergencyManager
     private lateinit var healthMonitoring: HealthMonitoringService
+    private lateinit var smartwatchManager: SmartwatchManager
     private val mockSensorService = MockSensorDataService()
 
     // Detection services
@@ -41,7 +43,7 @@ class EmergencyBackgroundService : Service() {
     private var healthMonitoringJob: Job? = null
     private var checkInMonitoringJob: Job? = null
     
-    // Mock sensor configuration
+    // Mock sensor configuration (fallback when no smartwatch)
     private var mockAnomalyProbability: Float = 0.05f // 5% default
     private var simulateExercise: Boolean = false
     
@@ -65,7 +67,8 @@ class EmergencyBackgroundService : Service() {
         const val EXTRA_ENABLE_VOLUME = "enable_volume"
         const val EXTRA_ENABLE_CHECKIN = "enable_checkin"
         const val EXTRA_ENABLE_HEALTH = "enable_health"
-        const val EXTRA_LLM_API_KEY = "llm_api_key"
+        const val EXTRA_OPENAI_API_KEY = "openai_api_key"  // Optional GPT-4 enhancement
+        const val EXTRA_LLM_API_KEY = "llm_api_key"  // LLM API key for health analysis
     }
 
     override fun onCreate() {
@@ -81,6 +84,7 @@ class EmergencyBackgroundService : Service() {
             // Initialize managers
             emergencyManager = EmergencyManager(this)
             healthMonitoring = HealthMonitoringService(this)
+            smartwatchManager = SmartwatchManager(this, healthMonitoring)
             android.util.Log.d("EmergencyBackgroundService", "Managers initialized")
 
             // Initialize mock sensor with baseline heart rate
@@ -212,14 +216,14 @@ class EmergencyBackgroundService : Service() {
                 val enableVolume = intent.getBooleanExtra(EXTRA_ENABLE_VOLUME, true)
                 val enableCheckIn = intent.getBooleanExtra(EXTRA_ENABLE_CHECKIN, false)
                 val enableHealth = intent.getBooleanExtra(EXTRA_ENABLE_HEALTH, true)
-                val llmApiKey = intent.getStringExtra(EXTRA_LLM_API_KEY)
+                val openAIApiKey = intent.getStringExtra(EXTRA_OPENAI_API_KEY)
 
                 // Start monitoring in background (don't block)
                 scope.launch {
                     try {
                         startMonitoring(
                             userId, userName, userAge, userPhone,
-                            enableShake, enableVolume, enableCheckIn, enableHealth, llmApiKey
+                            enableShake, enableVolume, enableCheckIn, enableHealth, openAIApiKey
                         )
                     } catch (e: Exception) {
                         android.util.Log.e("EmergencyBackgroundService", "Error in startMonitoring", e)
@@ -251,7 +255,7 @@ class EmergencyBackgroundService : Service() {
         enableVolume: Boolean,
         enableCheckIn: Boolean,
         enableHealth: Boolean,
-        llmApiKey: String?
+        openAIApiKey: String?  // Optional GPT-4 enhancement
     ) {
         android.util.Log.d("EmergencyBackgroundService", "Starting monitoring for user: $userId")
 
@@ -321,7 +325,7 @@ class EmergencyBackgroundService : Service() {
         // Initialize health monitoring
         if (enableHealth) {
             try {
-                startHealthMonitoring(userId, userName, userAge, userPhone, llmApiKey)
+                startHealthMonitoring(userId, userName, userAge, userPhone, openAIApiKey)
                 android.util.Log.d("EmergencyBackgroundService", "Health monitoring initialized")
             } catch (e: Exception) {
                 android.util.Log.e("EmergencyBackgroundService", "Failed to initialize health monitoring", e)
@@ -346,23 +350,45 @@ class EmergencyBackgroundService : Service() {
         userName: String,
         userAge: Int,
         userPhone: String,
-        llmApiKey: String?
+        openAIApiKey: String?  // Renamed from llmApiKey for clarity
     ) {
         healthMonitoringJob = scope.launch {
             while (isActive) {
                 try {
-                    // Generate mock heart rate reading
-                    val reading = mockSensorService.generateHeartRate(
-                        variationLevel = 0.5f,
-                        anomalyProbability = mockAnomalyProbability,
-                        simulateExercise = simulateExercise
-                    )
+                    val currentHeartRate: Int
+                    val activityLevel: HealthData.ActivityLevel
+                    val isExercising: Boolean
                     
-                    val currentHeartRate = reading.heartRate
-                    android.util.Log.d("EmergencyBackgroundService", 
-                        "📊 Heart rate reading: $currentHeartRate BPM " +
-                        "(baseline: ${mockSensorService.getBaselineHeartRate()}, " +
-                        "anomaly: ${reading.isAnomaly})")
+                    // PRIORITY: Use smartwatch data if connected, otherwise fallback to mock
+                    if (smartwatchManager.isConnected()) {
+                        // Use real smartwatch data
+                        val smartwatchHeartRate = smartwatchManager.getCurrentHeartRate()
+                        if (smartwatchHeartRate != null) {
+                            currentHeartRate = smartwatchHeartRate
+                            activityLevel = HealthData.ActivityLevel.UNKNOWN  // Smartwatch may not provide this
+                            isExercising = false  // Could be enhanced with accelerometer data
+                            android.util.Log.d("EmergencyBackgroundService", 
+                                "📊 Smartwatch heart rate: $currentHeartRate BPM")
+                        } else {
+                            // Smartwatch connected but no reading yet - skip this cycle
+                            delay(EmergencyConstants.HEART_RATE_SAMPLE_INTERVAL_MS)
+                            continue
+                        }
+                    } else {
+                        // Fallback to mock sensor data
+                        val reading = mockSensorService.generateHeartRate(
+                            variationLevel = 0.5f,
+                            anomalyProbability = mockAnomalyProbability,
+                            simulateExercise = simulateExercise
+                        )
+                        currentHeartRate = reading.heartRate
+                        activityLevel = reading.activityLevel.toHealthDataActivityLevel()
+                        isExercising = reading.isExercising
+                        android.util.Log.d("EmergencyBackgroundService", 
+                            "📊 Mock heart rate: $currentHeartRate BPM " +
+                            "(baseline: ${mockSensorService.getBaselineHeartRate()}, " +
+                            "anomaly: ${reading.isAnomaly})")
+                    }
 
                     // Save current heart rate to SharedPreferences for UI display
                     val prefs = getSharedPreferences(EmergencyConstants.PREF_NAME_EMERGENCY, Context.MODE_PRIVATE)
@@ -375,16 +401,16 @@ class EmergencyBackgroundService : Service() {
                     // Record reading
                     healthMonitoring.recordHeartRate(
                         currentHeartRate,
-                        reading.activityLevel.toHealthDataActivityLevel(),
-                        reading.isExercising
+                        activityLevel,
+                        isExercising
                     )
 
-                    // Analyze health status
+                    // Analyze health status (TinyLlama PRIMARY, GPT-4 optional)
                     val analysis = healthMonitoring.analyzeHealthStatus(
                         currentHeartRate = currentHeartRate,
-                        activityLevel = reading.activityLevel.toHealthDataActivityLevel(),
-                        isExercising = reading.isExercising,
-                        llmApiKey = llmApiKey
+                        activityLevel = activityLevel,
+                        isExercising = isExercising,
+                        openAIApiKey = openAIApiKey  // Optional GPT-4 enhancement
                     )
 
                     // Log analysis result
@@ -401,8 +427,8 @@ class EmergencyBackgroundService : Service() {
                         val healthData = healthMonitoring.getCurrentHealthData(
                             currentHeartRate,
                             analysis,
-                            reading.activityLevel.toHealthDataActivityLevel(),
-                            reading.isExercising
+                            activityLevel,
+                            isExercising
                         )
 
                         triggerHealthEmergency(userId, userName, userAge, userPhone, healthData)
@@ -516,7 +542,8 @@ class EmergencyBackgroundService : Service() {
         userPhone: String
     ): UserInfo {
         // Load medical info from database
-        val medicalInfo = emergencyManager.database.getMedicalInfo(userId) ?: MedicalInfo(
+        val medicalInfoResult = emergencyManager.database.getMedicalInfo(userId)
+        val medicalInfo = medicalInfoResult.getOrNull() ?: MedicalInfo(
             userId = userId,
             baselineHeartRate = healthMonitoring.getBaselineHeartRate()
         )

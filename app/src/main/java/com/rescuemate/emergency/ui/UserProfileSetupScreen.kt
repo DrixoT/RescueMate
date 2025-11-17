@@ -54,7 +54,7 @@ fun UserProfileSetupScreen(
     }
 
     // Load existing data
-    val existingData = remember { dbHelper.getMedicalInfo(userId) }
+    val existingData = remember { dbHelper.getMedicalInfo(userId).getOrNull() }
 
     // Form State
     var fullName by remember { mutableStateOf(existingData?.let { userId } ?: "") }

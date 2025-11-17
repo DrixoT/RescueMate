@@ -14,6 +14,10 @@ import androidx.compose.material3.Surface
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.core.content.ContextCompat
+import com.google.android.gms.maps.MapsInitializer
+import com.google.android.gms.maps.MapsInitializer.Renderer
+import com.google.android.gms.maps.OnMapsSdkInitializedCallback
+import com.rescuemate.BuildConfig
 import com.rescuemate.ui.navigation.RescueMateNavigation
 import com.rescuemate.ui.theme.RescueMateTheme
 
@@ -34,6 +38,9 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        // Initialize Google Maps SDK
+        initializeGoogleMaps()
 
         // Request critical permissions on startup
         requestCriticalPermissions()
@@ -121,5 +128,24 @@ class MainActivity : ComponentActivity() {
             Log.d(TAG, "All critical permissions already granted")
         }
     }
-}
 
+    /**
+     * Initialize Google Maps SDK
+     */
+    private fun initializeGoogleMaps() {
+        try {
+            val apiKey = BuildConfig.GOOGLE_MAPS_API_KEY
+            if (apiKey.isNullOrEmpty()) {
+                Log.w(TAG, "Google Maps API key is not configured")
+                return
+            }
+
+            // Initialize Maps SDK
+            MapsInitializer.initialize(this, Renderer.LATEST, OnMapsSdkInitializedCallback { renderer ->
+                Log.d(TAG, "Google Maps initialized successfully with renderer: $renderer")
+            })
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to initialize Google Maps SDK", e)
+        }
+    }
+}

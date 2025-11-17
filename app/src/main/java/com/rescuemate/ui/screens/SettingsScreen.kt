@@ -167,6 +167,34 @@ fun SettingsScreen(
                     }
                 }
 
+                // Devices
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Text(
+                        text = "Devices",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = CosmicTextSecondary,
+                        letterSpacing = 2.sp
+                    )
+
+                    Card(
+                        colors = CardDefaults.cardColors(
+                            containerColor = CosmicCard
+                        ),
+                        border = CardDefaults.outlinedCardBorder().copy(
+                            brush = Brush.linearGradient(listOf(CosmicBorder, CosmicBorder))
+                        )
+                    ) {
+                        SettingButton(
+                            icon = Icons.Default.Bluetooth,
+                            title = "Smartwatch Pairing",
+                            description = "Connect your smartwatch for health monitoring",
+                            onClick = onNavigateToBluetooth
+                        )
+                    }
+                }
+
                 // Appearance
                 Column(
                     verticalArrangement = Arrangement.spacedBy(12.dp)

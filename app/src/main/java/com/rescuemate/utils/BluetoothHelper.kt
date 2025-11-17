@@ -3,11 +3,17 @@ package com.rescuemate.utils
 import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothManager
+import android.bluetooth.le.BluetoothLeScanner
+import android.bluetooth.le.ScanFilter
+import android.bluetooth.le.ScanResult
+import android.bluetooth.le.ScanSettings
 import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
+import android.os.ParcelUuid
 import androidx.annotation.RequiresApi
 import androidx.core.content.ContextCompat
+import java.util.UUID
 
 data class BluetoothDeviceInfo(
     val name: String,
@@ -79,6 +85,32 @@ class BluetoothHelper(private val context: Context) {
                 device.name.lowercase().contains(keyword)
             }
         }
+    }
+
+    /**
+     * Get BLE scanner for scanning health devices
+     */
+    @RequiresApi(Build.VERSION_CODES.LOLLIPOP)
+    fun getBLEScanner(): BluetoothLeScanner? {
+        return bluetoothAdapter?.bluetoothLeScanner
+    }
+
+    /**
+     * Check if BLE is supported
+     */
+    fun isBLESupported(): Boolean {
+        return bluetoothAdapter != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP
+    }
+
+    /**
+     * Create scan filter for health devices (Heart Rate Service)
+     */
+    @RequiresApi(Build.VERSION_CODES.LOLLIPOP)
+    fun createHealthDeviceScanFilter(): ScanFilter {
+        val heartRateServiceUuid = UUID.fromString("0000180d-0000-1000-8000-00805f9b34fb")
+        return ScanFilter.Builder()
+            .setServiceUuid(ParcelUuid(heartRateServiceUuid))
+            .build()
     }
 }
 

@@ -1,6 +1,7 @@
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
+    id("org.jetbrains.kotlin.plugin.compose")
     id("kotlin-parcelize")
 }
 
@@ -33,7 +34,7 @@ android {
 
     defaultConfig {
         applicationId = "com.rescuemate"
-        minSdk = 24
+        minSdk = 26
         targetSdk = 34
         versionCode = 1
         versionName = "1.0.0"
@@ -58,11 +59,15 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+        }
+        debug {
+            isMinifyEnabled = false
         }
     }
     compileOptions {
@@ -75,9 +80,6 @@ android {
     buildFeatures {
         compose = true
         buildConfig = true
-    }
-    composeOptions {
-        kotlinCompilerExtensionVersion = "1.5.15"
     }
     packaging {
         resources {
@@ -131,6 +133,12 @@ dependencies {
 
     // Image Loading (Coil)
     implementation("io.coil-kt:coil-compose:2.4.0")
+
+    // TinyLlama LLM Inference (Primary health analysis) - Using Llamatik
+    implementation("com.llamatik:library:0.8.1")
+    
+    // Biometric Authentication
+    implementation("androidx.biometric:biometric:1.1.0")
 
     // Testing
     testImplementation("junit:junit:4.13.2")
