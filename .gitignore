@@ -70,3 +70,6 @@ DerivedData/
 *.min.js
 *.min.css
 
+*.gguf
+*.bin
+
