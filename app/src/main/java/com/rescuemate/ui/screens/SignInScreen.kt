@@ -1,5 +1,10 @@
 package com.rescuemate.ui.screens
 
+import android.app.Activity
+import android.util.Log
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -8,6 +13,7 @@ import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
@@ -17,29 +23,59 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.rescuemate.R
+import com.rescuemate.data.UserPreferences
+import com.rescuemate.data.repository.AuthRepository
 import com.rescuemate.ui.theme.*
+import kotlinx.coroutines.launch
 
 @Composable
 fun SignInScreen(
     onSignIn: () -> Unit,
     onSignUp: () -> Unit,
-    onEmailLogin: () -> Unit = {}
+    onEmailLogin: () -> Unit = {},
+    onPhoneLogin: () -> Unit = {}
 ) {
-    val context = androidx.compose.ui.platform.LocalContext.current
-    val userPrefs = remember { com.rescuemate.data.UserPreferences(context) }
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val userPrefs = remember { UserPreferences(context) }
+    val authRepo = remember { AuthRepository(context) }
+
+    // Google Sign In Launcher
+    val googleSignInLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            val intent = result.data
+            if (intent != null) {
+                scope.launch {
+                    val signInResult = authRepo.signInWithGoogle(intent)
+                    if (signInResult.isSuccess) {
+                        Log.d("SignInScreen", "✅ Google Sign-In successful")
+                        Toast.makeText(context, "Welcome back!", Toast.LENGTH_SHORT).show()
+                        onSignIn()
+                    } else {
+                        Log.e("SignInScreen", "❌ Google Sign-In failed", signInResult.exceptionOrNull())
+                        Toast.makeText(context, "Sign in failed: ${signInResult.exceptionOrNull()?.message}", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
+        }
+    }
     
-    // Function to handle successful sign in
+    // Function to handle successful sign in (Mock/Email)
     fun handleSuccessfulSignIn(email: String = "user@rescuemate.com") {
         // Save login state
         userPrefs.saveUserCredentials(email, "hashed_password")
-        userPrefs.setOnboardingComplete(true)
+        // userPrefs.setOnboardingComplete(true) // Done by intro/setup flow now
         android.util.Log.d("SignInScreen", "✅ User signed in and saved credentials")
         onSignIn()
     }
+
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -117,8 +153,11 @@ fun SignInScreen(
             ) {
                 SignInButton(
                     text = stringResource(R.string.continue_with_google),
-                    icon = Icons.Default.Login, // TODO: Replace with Google logo
-                    onClick = { handleSuccessfulSignIn("google_user@rescuemate.com") }
+                    icon = Icons.Default.Login, 
+                    onClick = { 
+                        val signInIntent = authRepo.getGoogleSignInIntent()
+                        googleSignInLauncher.launch(signInIntent)
+                    }
                 )
                 SignInButton(
                     text = stringResource(R.string.continue_with_apple),
@@ -128,7 +167,7 @@ fun SignInScreen(
                 SignInButton(
                     text = stringResource(R.string.continue_with_phone),
                     icon = Icons.Default.Phone,
-                    onClick = { handleSuccessfulSignIn("phone_user@rescuemate.com") }
+                    onClick = onPhoneLogin
                 )
                 SignInButton(
                     text = stringResource(R.string.continue_with_email),
@@ -224,4 +263,3 @@ fun SignInButton(
         )
     }
 }
-

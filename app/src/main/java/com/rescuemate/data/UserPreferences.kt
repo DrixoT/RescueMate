@@ -135,6 +135,14 @@ class UserPreferences(context: Context) {
         return prefs.getBoolean(KEY_ONBOARDING_COMPLETE, false)
     }
 
+    fun isSetupComplete(): Boolean {
+        return prefs.getBoolean("setup_complete", false)
+    }
+
+    fun setSetupComplete(complete: Boolean) {
+        prefs.edit().putBoolean("setup_complete", complete).apply()
+    }
+
     // Clear all data
     fun clearAllData() {
         Log.w(TAG, "⚠️ CLEARING ALL USER DATA")

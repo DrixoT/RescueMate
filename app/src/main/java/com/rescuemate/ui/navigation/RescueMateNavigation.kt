@@ -22,6 +22,9 @@ import com.rescuemate.ui.screens.VoiceAISetupScreen
 import com.rescuemate.ui.screens.PermissionRequestScreen
 import com.rescuemate.ui.screens.BluetoothPairingScreen as BTPairingScreen
 
+import com.rescuemate.ui.screens.SetupWizardScreen
+import com.rescuemate.ui.screens.PhoneLoginScreen
+
 @Composable
 fun RescueMateNavigation(
     navController: NavHostController = rememberNavController()
@@ -31,8 +34,10 @@ fun RescueMateNavigation(
     
     // Determine start destination based on login status
     val startDestination = when {
-        // If user is logged in, go to home
-        userPrefs.isLoggedIn() -> Screen.Home.route
+        // If user is logged in, check if setup is complete
+        userPrefs.isLoggedIn() -> {
+            if (userPrefs.isSetupComplete()) Screen.Home.route else Screen.SetupWizard.route
+        }
         // If onboarding is complete but not logged in, go to sign in
         userPrefs.isOnboardingComplete() -> Screen.SignIn.route
         // Otherwise, show onboarding
@@ -56,7 +61,8 @@ fun RescueMateNavigation(
         composable(Screen.SignIn.route) {
             SignInScreen(
                 onSignIn = {
-                    navController.navigate(Screen.Home.route) {
+                    val target = if (userPrefs.isSetupComplete()) Screen.Home.route else Screen.SetupWizard.route
+                    navController.navigate(target) {
                         popUpTo(Screen.SignIn.route) { inclusive = true }
                     }
                 },
@@ -65,6 +71,23 @@ fun RescueMateNavigation(
                 },
                 onEmailLogin = {
                     navController.navigate(Screen.EmailLogin.route)
+                },
+                onPhoneLogin = {
+                    navController.navigate(Screen.PhoneLogin.route)
+                }
+            )
+        }
+        
+        composable(Screen.PhoneLogin.route) {
+            PhoneLoginScreen(
+                onBack = {
+                    navController.popBackStack()
+                },
+                onLoginSuccess = {
+                    val target = if (userPrefs.isSetupComplete()) Screen.Home.route else Screen.SetupWizard.route
+                    navController.navigate(target) {
+                        popUpTo(Screen.PhoneLogin.route) { inclusive = true }
+                    }
                 }
             )
         }
@@ -75,7 +98,8 @@ fun RescueMateNavigation(
                     navController.popBackStack()
                 },
                 onComplete = {
-                    navController.navigate(Screen.Home.route) {
+                    // New users always go to Setup Wizard
+                    navController.navigate(Screen.SetupWizard.route) {
                         popUpTo(Screen.SignUp.route) { inclusive = true }
                     }
                 }
@@ -155,7 +179,8 @@ fun RescueMateNavigation(
                     navController.popBackStack()
                 },
                 onLogin = {
-                    navController.navigate(Screen.Home.route) {
+                    val target = if (userPrefs.isSetupComplete()) Screen.Home.route else Screen.SetupWizard.route
+                    navController.navigate(target) {
                         popUpTo(Screen.SignIn.route) { inclusive = true }
                     }
                 },
@@ -180,6 +205,16 @@ fun RescueMateNavigation(
                 },
                 onComplete = {
                     navController.popBackStack()
+                }
+            )
+        }
+
+        composable(Screen.SetupWizard.route) {
+            SetupWizardScreen(
+                onComplete = {
+                    navController.navigate(Screen.Home.route) {
+                        popUpTo(Screen.SetupWizard.route) { inclusive = true }
+                    }
                 }
             )
         }

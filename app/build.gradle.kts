@@ -3,6 +3,7 @@ plugins {
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
     id("kotlin-parcelize")
+    id("com.google.gms.google-services")
 }
 
 // Function to load .env file
@@ -134,11 +135,17 @@ dependencies {
     // Image Loading (Coil)
     implementation("io.coil-kt:coil-compose:2.4.0")
 
-    // TinyLlama LLM Inference (Primary health analysis) - Using Llamatik
-    implementation("com.llamatik:library:0.8.1")
-    
+    // Vosk Offline Speech Recognition
+    implementation("com.alphacephei:vosk-android:0.3.47")
+
     // Biometric Authentication
     implementation("androidx.biometric:biometric:1.1.0")
+
+    // Firebase
+    implementation(platform("com.google.firebase:firebase-bom:32.7.2"))
+    implementation("com.google.firebase:firebase-auth")
+    implementation("com.google.firebase:firebase-firestore")
+    implementation("com.google.android.gms:play-services-auth:21.0.0")
 
     // Testing
     testImplementation("junit:junit:4.13.2")

@@ -8,15 +8,15 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.util.Locale
 
 /**
  * LocalVoiceLLMService
- * Provides local voice conversation using TinyLlama for text generation
- * and Android TTS for voice synthesis when network is unavailable
- * 
- * Implements the same interface as ElevenLabsConversationalService for seamless fallback
+ * Provides local voice conversation using streaming TinyLlama and Vosk STT.
+ * Implements streaming pipeline: Voice -> STT -> LLM Stream -> TTS Stream
  */
 class LocalVoiceLLMService(private val context: Context) {
 
@@ -24,36 +24,30 @@ class LocalVoiceLLMService(private val context: Context) {
         private const val TAG = "LocalVoiceLLM"
     }
 
-    // Core services
-    private val tinyLlamaService = TinyLlamaInferenceService(context)
-    private val speechToTextService = LocalSpeechToTextService(context)
-    private val voiceMatcher = VoiceMatcher(context)
+    // Components
+    private val tinyLlamaService = TinyLlamaInferenceService(context) // Helper for model file management
+    private var voskSTT: VoskSTT? = null
+    private var streamingLLM: StreamingLLM? = null
+    private var streamingTTS: StreamingTTS? = null
     private val emergencyAssistant = EmergencyAssistantService()
     
-    // TTS
-    private var textToSpeech: TextToSpeech? = null
-    private var isTtsInitialized = false
-    
-    // Component availability flags
-    private var isTinyLlamaAvailable = false
-    private var isSttAvailable = false
-    
-    // Conversation state
-    private val conversationHistory = mutableListOf<Pair<String, String>>() // (user, assistant) pairs
-    private var conversationId: String? = null
+    // State
+    private var isInitialized = false
     private var isActive = false
+    private var conversationId: String? = null
+    private var isProcessing = false
     
     // Coroutine scope
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
 
     /**
-     * Callbacks for conversation events (same interface as ElevenLabsConversationalService)
+     * Callbacks for conversation events
      */
     interface ConversationCallbacks {
         fun onConnect(conversationId: String)
-        fun onModeChange(mode: String) // "listening", "speaking"
+        fun onModeChange(mode: String) // "listening", "speaking", "processing"
         fun onStatusChange(status: String)
-        fun onMessage(source: String, messageJson: String) // source: "user" or "agent"
+        fun onMessage(source: String, messageJson: String)
         fun onError(error: String)
         fun onDisconnect()
         fun onCanSendFeedback(canSend: Boolean)
@@ -63,587 +57,237 @@ class LocalVoiceLLMService(private val context: Context) {
     private var callbacks: ConversationCallbacks? = null
 
     init {
-        Log.d(TAG, "LocalVoiceLLMService initialized")
+        Log.d(TAG, "LocalVoiceLLMService instantiated")
     }
 
     /**
      * Initialize all required services
-     * Makes components optional - only requires EmergencyAssistantService (which has no dependencies)
      */
     suspend fun initialize(): Boolean {
-        try {
-            val availableComponents = mutableListOf<String>()
-            val warnings = mutableListOf<String>()
-            
-            // Try to initialize TinyLlama (optional - we have EmergencyAssistantService)
-            isTinyLlamaAvailable = try {
-                val initialized = tinyLlamaService.initialize()
-                if (initialized) {
-                    availableComponents.add("TinyLlama")
-                    Log.d(TAG, "TinyLlama initialized successfully")
-                } else {
-                    Log.w(TAG, "TinyLlama not available (optional - using EmergencyAssistantService)")
-                    warnings.add("TinyLlama model not available - using rule-based emergency assistant")
-                }
-                initialized
-            } catch (e: Exception) {
-                Log.w(TAG, "TinyLlama initialization error (optional)", e)
-                warnings.add("TinyLlama unavailable - using rule-based emergency assistant")
-                false
-            }
+        if (isInitialized) return true
 
-            // Try to initialize Speech-to-Text (optional - can use text-only mode)
-            isSttAvailable = try {
-                val initialized = speechToTextService.initialize()
-                if (initialized) {
-                    availableComponents.add("Speech-to-Text")
-                    Log.d(TAG, "Speech-to-Text initialized successfully")
-                    
-                    // Check offline speech recognition support
-                    if (!speechToTextService.isOfflineRecognitionSupported()) {
-                        Log.w(TAG, "Offline speech recognition may not be available")
-                        warnings.add("Offline speech recognition may require language pack download")
-                    }
-                } else {
-                    Log.w(TAG, "Speech-to-Text not available (optional - text-only mode available)")
-                    warnings.add("Speech recognition unavailable - text input mode available")
-                }
-                initialized
-            } catch (e: Exception) {
-                Log.w(TAG, "Speech-to-Text initialization error (optional)", e)
-                warnings.add("Speech recognition unavailable - text input mode available")
-                false
-            }
-
-            // Try to initialize Text-to-Speech (optional - can work without it)
-            textToSpeech = TextToSpeech(context) { status ->
-                if (status == TextToSpeech.SUCCESS) {
-                    isTtsInitialized = true
-                    
-                    // Apply voice configuration
-                    val voiceId = voiceMatcher.getStoredVoiceId()
-                    voiceMatcher.applyVoiceConfig(textToSpeech!!, voiceId)
-                    
-                    availableComponents.add("Text-to-Speech")
-                    Log.d(TAG, "Text-to-Speech initialized with voice: ${voiceMatcher.getVoiceName(voiceId)}")
-                } else {
-                    Log.w(TAG, "Text-to-Speech initialization failed (optional)")
-                    isTtsInitialized = false
-                    warnings.add("Text-to-Speech unavailable - responses will be text-only")
-                }
-            }
-
-            // Wait for TTS initialization (with timeout)
-            var waitCount = 0
-            while (!isTtsInitialized && waitCount < 50) { // 5 second timeout
-                kotlinx.coroutines.delay(100)
-                waitCount++
-            }
+        return try {
+            Log.d(TAG, "Initializing components...")
             
-            // TTS was already added to availableComponents in the callback if successful
-
-            // EmergencyAssistantService is always available (no dependencies)
-            availableComponents.add("EmergencyAssistant")
+            // 1. Initialize TTS (needs time)
+            streamingTTS = StreamingTTS(context)
             
-            // Log initialization status
-            Log.d(TAG, "Initialization complete. Available components: ${availableComponents.joinToString(", ")}")
-            if (warnings.isNotEmpty()) {
-                Log.w(TAG, "Warnings: ${warnings.joinToString("; ")}")
-            }
-            
-            // At minimum, we need EmergencyAssistantService (which is always available)
-            // So initialization should always succeed
-            if (availableComponents.isEmpty()) {
-                Log.e(TAG, "No components available - this should not happen")
-                callbacks?.onError("Failed to initialize: No components available")
+            // 2. Prepare LLM Model file (using existing service logic)
+            // This copies the asset to internal storage if needed
+            val modelReady = tinyLlamaService.initialize()
+            if (!modelReady) {
+                Log.e(TAG, "Failed to prepare TinyLlama model file")
                 return false
             }
             
-            // Provide user feedback about available modes
-            val modeInfo = when {
-                isSttAvailable && isTtsInitialized -> "Voice mode available"
-                isTtsInitialized -> "Text input with voice output available"
-                isSttAvailable -> "Voice input with text output available"
-                else -> "Text-only mode available"
+            val modelPath = tinyLlamaService.getModelPath()
+            if (modelPath == null) {
+                Log.e(TAG, "Model path is null despite initialization")
+                return false
             }
-            Log.d(TAG, "Mode: $modeInfo")
             
-            return true
+            // 3. Initialize Streaming LLM (JNI)
+            streamingLLM = StreamingLLM(modelPath)
+            if (!streamingLLM!!.initialize()) {
+                Log.w(TAG, "StreamingLLM JNI init failed - check log for native errors")
+                // We continue only if we want to support text fallback, but for voice mode this is critical
+                // Return false if strict, or true to allow fallback
+                return false 
+            }
+
+            // 4. Initialize Vosk STT
+            // Vosk initialization is async, we'll wrap it
+            // Note: VoskSTT.initialize callback might be on a background thread
+            // We wait for the user to start conversation to fully activate Vosk listening
+            voskSTT = VoskSTT(
+                context = context,
+                onResult = { text ->
+                    handleUserSpeech(text)
+                },
+                onPartialResult = { partial ->
+                    handlePartialSpeech(partial)
+                },
+                onError = { error ->
+                    Log.e(TAG, "STT Error: $error")
+                    callbacks?.onError("Speech Error: $error")
+                }
+            )
+            
+            // Trigger Vosk model loading
+            voskSTT?.initialize { success ->
+                if (!success) {
+                    Log.e(TAG, "Vosk initialization failed")
+                } else {
+                    Log.d(TAG, "Vosk initialized")
+                }
+            }
+            
+            isInitialized = true
+            Log.d(TAG, "LocalVoiceLLMService initialized successfully")
+            true
         } catch (e: Exception) {
             Log.e(TAG, "Error initializing LocalVoiceLLMService", e)
-            // Even if there's an error, EmergencyAssistantService should still work
-            // So we return true but log the error
-            Log.w(TAG, "Continuing with EmergencyAssistantService despite initialization error")
-            return true
+            false
         }
     }
 
     /**
      * Start a conversation
-     * @param systemPrompt Optional system prompt (uses default if null)
-     * @param callbacks Callbacks for conversation events
      */
     fun startConversation(
         systemPrompt: String? = null,
         callbacks: ConversationCallbacks
     ) {
         if (isActive) {
-            Log.w(TAG, "Conversation already active")
-            callbacks.onError("Conversation already in progress")
+            callbacks.onError("Conversation already active")
             return
         }
 
         this.callbacks = callbacks
         isActive = true
-        conversationHistory.clear()
-        conversationId = "local_${System.currentTimeMillis()}"
-
-        Log.d(TAG, "Starting local voice conversation: $conversationId")
+        conversationId = "local_stream_${System.currentTimeMillis()}"
 
         scope.launch {
-            val initialized = initialize()
-            if (!initialized) {
-                callbacks.onError("Failed to initialize local voice services")
-                isActive = false
-                return@launch
+            if (!isInitialized) {
+                val success = initialize()
+                if (!success) {
+                    callbacks.onError("Failed to initialize voice AI components")
+                    isActive = false
+                    return@launch
+                }
             }
 
             callbacks.onConnect(conversationId!!)
             callbacks.onStatusChange("connected")
-            callbacks.onModeChange("listening")
             
-            // Send initial greeting
+            // Initial greeting
             val greeting = emergencyAssistant.getGreeting()
             callbacks.onMessage("agent", greeting)
+            callbacks.onModeChange("speaking")
             
-            // Speak greeting if TTS is available
-            if (isTtsInitialized) {
-                callbacks.onModeChange("speaking")
-                speakText(greeting)
-            } else {
-                Log.w(TAG, "TTS not available - greeting sent as text only")
-            }
+            // Speak greeting
+            streamingTTS?.speakToken(greeting)
+            streamingTTS?.speakFinal()
             
-            // Start continuous listening (or text-only mode if STT unavailable)
-            startContinuousListening()
+            // Wait for greeting to finish (estimate) or just start listening
+            delay(2000) 
             
-            Log.d(TAG, "Local conversation started successfully")
-        }
-    }
-
-    /**
-     * Start continuous listening for user speech
-     * Automatically processes speech and generates responses
-     * Falls back to text-only mode if speech recognition is unavailable
-     */
-    fun startContinuousListening() {
-        if (!isActive) {
-            Log.w(TAG, "No active conversation for listening")
-            return
-        }
-
-        // If STT is not available, switch to text-only mode
-        if (!isSttAvailable) {
-            Log.w(TAG, "Speech-to-Text not available - using text-only mode")
-            callbacks?.onModeChange("text_only")
-            callbacks?.onStatusChange("connected_text_only")
-            return
-        }
-
-        scope.launch {
-            var consecutiveOfflineErrors = 0
-            val maxOfflineErrors = 3
-            
-            while (isActive) {
-                try {
-                    callbacks?.onModeChange("listening")
-                    val recognizedText = speechToTextService.startListening()
-                    
-                    if (recognizedText != null && recognizedText.isNotBlank()) {
-                        consecutiveOfflineErrors = 0 // Reset counter on success
-                        processRecognizedSpeech(recognizedText)
-                    } else {
-                        // No speech detected, continue listening
-                        kotlinx.coroutines.delay(500)
-                    }
-                } catch (e: LocalSpeechToTextService.OfflineSpeechNotAvailableException) {
-                    consecutiveOfflineErrors++
-                    Log.e(TAG, "Offline speech error $consecutiveOfflineErrors/$maxOfflineErrors", e)
-                    
-                    if (consecutiveOfflineErrors >= maxOfflineErrors) {
-                        Log.w(TAG, "Too many offline errors, switching to text-only mode")
-                        callbacks?.onError("Offline speech recognition unavailable. Please use text input.")
-                        callbacks?.onModeChange("text_only")
-                        callbacks?.onStatusChange("connected_text_only")
-                        // Don't stop the conversation - allow text input
-                        break
-                    }
-                    kotlinx.coroutines.delay(2000) // Wait longer before retrying
-                } catch (e: Exception) {
-                    Log.e(TAG, "Error in continuous listening", e)
-                    kotlinx.coroutines.delay(1000) // Wait before retrying
-                }
-            }
-        }
-    }
-
-    /**
-     * Process recognized speech and generate response
-     */
-    private suspend fun processRecognizedSpeech(recognizedText: String) {
-        try {
-            callbacks?.onModeChange("processing")
-            callbacks?.onMessage("user", recognizedText)
-
-            // Use TinyLlama as PRIMARY response generator (more dynamic and conversational)
-            val systemPrompt = emergencyAssistant.getSystemPrompt()
-            var response: String? = null
-            
-            // Try TinyLlama first if available
-            if (isTinyLlamaAvailable) {
-                response = tinyLlamaService.generateConversation(
-                    systemPrompt = systemPrompt,
-                    conversationHistory = conversationHistory.toList(),
-                    userMessage = recognizedText
-                )
-                
-                if (response != null && response.isNotBlank()) {
-                    Log.d(TAG, "Generated response from TinyLlama")
-                } else {
-                    Log.w(TAG, "TinyLlama returned empty response, falling back to EmergencyAssistant")
-                }
-            }
-            
-            // Fallback to EmergencyAssistantService if TinyLlama unavailable or failed
-            if (response == null || response.isBlank()) {
-                Log.d(TAG, "Using EmergencyAssistantService as fallback")
-                response = emergencyAssistant.generateResponse(
-                    userMessage = recognizedText,
-                    conversationHistory = conversationHistory.toList()
-                )
-            }
-            
-            // If still no response, show error
-            if (response.isBlank()) {
-                callbacks?.onError("Failed to generate response")
-                callbacks?.onModeChange("listening")
-                return
-            }
-
-            conversationHistory.add(Pair(recognizedText, response))
-            callbacks?.onMessage("agent", response)
-            callbacks?.onModeChange("speaking")
-
-            speakText(response)
-            callbacks?.onModeChange("listening")
-        } catch (e: LocalSpeechToTextService.OfflineSpeechNotAvailableException) {
-            Log.e(TAG, "Offline speech recognition failed", e)
-            callbacks?.onError("Offline speech recognition unavailable. Please use text input or download language pack.")
-            callbacks?.onModeChange("idle")
-            // Switch to text-only mode
-            isActive = false
-        } catch (e: Exception) {
-            Log.e(TAG, "Error processing speech", e)
-            callbacks?.onError("Error: ${e.message}")
-            callbacks?.onModeChange("listening")
-        }
-    }
-
-    /**
-     * Process user speech input (single recognition)
-     * This should be called when user finishes speaking
-     */
-    suspend fun processUserSpeech(): Boolean {
-        if (!isActive) {
-            Log.w(TAG, "No active conversation")
-            return false
-        }
-
-        callbacks?.onModeChange("processing")
-
-        try {
-            // Listen for speech
-            val recognizedText = speechToTextService.startListening()
-            
-            if (recognizedText == null || recognizedText.isBlank()) {
-                Log.w(TAG, "No speech recognized")
-                callbacks?.onModeChange("listening")
-                return false
-            }
-
-            Log.d(TAG, "Recognized user speech: $recognizedText")
-            callbacks?.onMessage("user", recognizedText)
-
-            // Use TinyLlama as PRIMARY response generator
-            val systemPrompt = emergencyAssistant.getSystemPrompt()
-            var response: String? = null
-            
-            // Try TinyLlama first if available
-            if (isTinyLlamaAvailable) {
-                response = tinyLlamaService.generateConversation(
-                    systemPrompt = systemPrompt,
-                    conversationHistory = conversationHistory.toList(),
-                    userMessage = recognizedText
-                )
-                
-                if (response != null && response.isNotBlank()) {
-                    Log.d(TAG, "Generated response from TinyLlama")
-                } else {
-                    Log.w(TAG, "TinyLlama returned empty response, falling back to EmergencyAssistant")
-                }
-            }
-            
-            // Fallback to EmergencyAssistantService if TinyLlama unavailable or failed
-            if (response == null || response.isBlank()) {
-                Log.d(TAG, "Using EmergencyAssistantService as fallback")
-                response = emergencyAssistant.generateResponse(
-                    userMessage = recognizedText,
-                    conversationHistory = conversationHistory.toList()
-                )
-            }
-            
-            // If still no response, show error
-            if (response.isBlank()) {
-                callbacks?.onError("Failed to generate response")
-                callbacks?.onModeChange("listening")
-                return false
-            }
-
-            // Store in conversation history
-            conversationHistory.add(Pair(recognizedText, response))
-
-            Log.d(TAG, "Generated response: $response")
-            callbacks?.onMessage("agent", response)
-            callbacks?.onModeChange("speaking")
-
-            // Speak the response
-            speakText(response)
-
-            callbacks?.onModeChange("listening")
-            return true
-
-        } catch (e: Exception) {
-            Log.e(TAG, "Error processing user speech", e)
-            callbacks?.onError("Error: ${e.message}")
-            callbacks?.onModeChange("listening")
-            return false
-        }
-    }
-
-    /**
-     * Send a text message (alternative to voice input)
-     * This serves as a fallback when voice recognition fails
-     */
-    fun sendUserMessage(text: String) {
-        if (text.isBlank()) {
-            Log.w(TAG, "Empty message")
-            return
-        }
-
-        // Allow text messages even if conversation not fully active
-        // This enables text-only mode as fallback
-        scope.launch {
-            try {
-                callbacks?.onModeChange("processing")
-                callbacks?.onMessage("user", text)
-
-                // Use TinyLlama as PRIMARY response generator
-                val systemPrompt = emergencyAssistant.getSystemPrompt()
-                var response: String? = null
-                
-                // Try TinyLlama first if available
-                if (isTinyLlamaAvailable) {
-                    response = tinyLlamaService.generateConversation(
-                        systemPrompt = systemPrompt,
-                        conversationHistory = conversationHistory.toList(),
-                        userMessage = text
-                    )
-                    
-                    if (response != null && response.isNotBlank()) {
-                        Log.d(TAG, "Generated response from TinyLlama")
-                    } else {
-                        Log.w(TAG, "TinyLlama returned empty response, falling back to EmergencyAssistant")
-                    }
-                } else {
-                    // Try to initialize TinyLlama if not already initialized
-                    if (tinyLlamaService.initialize()) {
-                        isTinyLlamaAvailable = true
-                        response = tinyLlamaService.generateConversation(
-                            systemPrompt = systemPrompt,
-                            conversationHistory = conversationHistory.toList(),
-                            userMessage = text
-                        )
-                        if (response != null && response.isNotBlank()) {
-                            Log.d(TAG, "Generated response from TinyLlama (initialized on demand)")
-                        }
-                    }
-                }
-                
-                // Fallback to EmergencyAssistantService if TinyLlama unavailable or failed
-                if (response == null || response.isBlank()) {
-                    Log.d(TAG, "Using EmergencyAssistantService as fallback")
-                    response = emergencyAssistant.generateResponse(
-                        userMessage = text,
-                        conversationHistory = conversationHistory.toList()
-                    )
-                }
-                
-                // If still no response, show error
-                if (response.isBlank()) {
-                    callbacks?.onError("Failed to generate response")
-                    callbacks?.onModeChange("text_input")
-                    return@launch
-                }
-
-                // Use the generated response
-                conversationHistory.add(Pair(text, response))
-                callbacks?.onMessage("agent", response)
-                
-                // Only speak if TTS is available
-                if (isTtsInitialized) {
-                    callbacks?.onModeChange("speaking")
-                    speakText(response)
-                }
-
-                callbacks?.onModeChange("text_input")
-            } catch (e: Exception) {
-                Log.e(TAG, "Error processing text message", e)
-                callbacks?.onError("Error: ${e.message}")
-                callbacks?.onModeChange("text_input")
-            }
+            startListening()
         }
     }
     
-    /**
-     * Enable text-only mode (fallback when voice fails)
-     */
-    fun enableTextOnlyMode() {
-        Log.d(TAG, "Switching to text-only mode")
-        isActive = true // Keep conversation active
-        conversationId = "local_text_${System.currentTimeMillis()}"
+    private fun startListening() {
+        if (!isActive) return
         
-        scope.launch {
-            // Initialize only TinyLlama (skip STT)
-            val llamaInitialized = tinyLlamaService.initialize()
-            if (!llamaInitialized) {
-                callbacks?.onError("AI model not available for text mode")
-                return@launch
-            }
-            
-            // Try to initialize TTS (optional for text mode)
-            if (textToSpeech == null) {
-                textToSpeech = TextToSpeech(context) { status ->
-                    isTtsInitialized = status == TextToSpeech.SUCCESS
+        Log.d(TAG, "Starting listening...")
+        callbacks?.onModeChange("listening")
+        voskSTT?.startListening()
+    }
+    
+    private fun stopListening() {
+        voskSTT?.stopListening()
+    }
+
+    /**
+     * Handle partial speech (interruption logic)
+     */
+    private fun handlePartialSpeech(partial: String) {
+        // If user speaks while assistant is speaking, interrupt!
+        if (streamingTTS?.isSpeaking() == true && partial.length > 2) {
+            Log.d(TAG, "Interruption detected: $partial")
+            streamingTTS?.stop()
+            callbacks?.onModeChange("listening")
+        }
+    }
+
+    /**
+     * Handle complete user speech
+     */
+    private fun handleUserSpeech(text: String) {
+        if (!isActive || isProcessing) return
+        if (text.isBlank()) return
+
+        Log.d(TAG, "User said: $text")
+        callbacks?.onMessage("user", text)
+        
+        // Stop listening while processing/speaking
+        stopListening()
+        isProcessing = true
+        callbacks?.onModeChange("processing")
+
+        scope.launch(Dispatchers.IO) {
+            try {
+                // Generate response stream
+                val responseBuilder = StringBuilder()
+                
+                // Notify UI we are about to speak
+                withContext(Dispatchers.Main) {
+                    callbacks?.onModeChange("speaking")
+                }
+                
+                // Stream tokens from LLM -> TTS
+                streamingLLM?.generateResponse(text) { token ->
+                    responseBuilder.append(token)
+                    streamingTTS?.speakToken(token)
+                }
+                
+                // Flush TTS buffer
+                streamingTTS?.speakFinal()
+                
+                val fullResponse = responseBuilder.toString()
+                Log.d(TAG, "Full response: $fullResponse")
+                
+                withContext(Dispatchers.Main) {
+                    callbacks?.onMessage("agent", fullResponse)
+                }
+                
+                // Wait a bit before listening again (avoid picking up self)
+                delay(1000)
+                
+            } catch (e: Exception) {
+                Log.e(TAG, "Error in generation pipeline", e)
+                withContext(Dispatchers.Main) {
+                    callbacks?.onError("Error generating response")
+                }
+            } finally {
+                isProcessing = false
+                withContext(Dispatchers.Main) {
+                    startListening()
                 }
             }
-            
-            callbacks?.onConnect(conversationId!!)
-            callbacks?.onStatusChange("connected_text_only")
-            callbacks?.onModeChange("text_input")
-            Log.d(TAG, "Text-only mode enabled")
         }
     }
 
     /**
-     * Speak text using TTS
-     */
-    private fun speakText(text: String) {
-        if (!isTtsInitialized || textToSpeech == null) {
-            Log.e(TAG, "TTS not initialized")
-            return
-        }
-
-        try {
-            // Remove any JSON formatting if present
-            val cleanText = text.replace(Regex("\\{.*?\\}"), "").trim()
-            
-            val result = textToSpeech?.speak(cleanText, TextToSpeech.QUEUE_FLUSH, null, null)
-            if (result == TextToSpeech.ERROR) {
-                Log.e(TAG, "TTS speak error")
-                callbacks?.onError("Failed to speak response")
-            } else {
-                Log.d(TAG, "Speaking: ${cleanText.take(50)}...")
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Error speaking text", e)
-            callbacks?.onError("Error speaking: ${e.message}")
-        }
-    }
-
-    /**
-     * Toggle microphone mute/unmute
-     */
-    fun toggleMute(): Boolean {
-        // For local service, we can pause TTS
-        if (isTtsInitialized && textToSpeech != null) {
-            textToSpeech?.stop()
-        }
-        return false // Always return false (not muted) for simplicity
-    }
-
-    /**
-     * Check if microphone is muted
-     */
-    fun isMuted(): Boolean = false
-
-    /**
-     * Send feedback (not implemented for local service)
-     */
-    fun sendFeedback(isPositive: Boolean) {
-        Log.d(TAG, "Feedback received: ${if (isPositive) "positive" else "negative"}")
-        // Local service doesn't support feedback
-    }
-
-    /**
-     * End the conversation
+     * End conversation
      */
     fun endConversation() {
-        if (!isActive) {
-            return
-        }
-
-        Log.d(TAG, "Ending local conversation")
-
-        speechToTextService.stopListening()
-        textToSpeech?.stop()
-        
+        Log.d(TAG, "Ending conversation")
         isActive = false
-        conversationHistory.clear()
-        conversationId = null
-        
+        stopListening()
+        streamingTTS?.stop()
         callbacks?.onDisconnect()
         callbacks = null
-
-        Log.d(TAG, "Conversation ended")
     }
 
-    /**
-     * Check if conversation is active
-     */
-    fun isActive(): Boolean = isActive
-
-    /**
-     * Get session state
-     */
-    fun getSessionState(): String {
-        return when {
-            isActive -> "active"
-            else -> "idle"
-        }
-    }
-
-    /**
-     * Clean up all resources
-     */
     fun cleanup() {
-        Log.d(TAG, "Cleaning up LocalVoiceLLMService")
         endConversation()
-        speechToTextService.cleanup()
-        textToSpeech?.shutdown()
-        textToSpeech = null
-        tinyLlamaService.shutdown()
+        voskSTT?.cleanup()
+        streamingTTS?.shutdown()
+        streamingLLM?.cleanup()
         scope.cancel()
-        Log.d(TAG, "Cleanup complete")
+    }
+    
+    // Interface compatibility methods
+    fun isActive(): Boolean = isActive
+    fun getSessionState(): String = if (isActive) "active" else "idle"
+    fun toggleMute(): Boolean { return false }
+    fun isMuted(): Boolean = false
+    fun sendFeedback(isPositive: Boolean) {}
+    
+    fun sendUserMessage(text: String) {
+         if (isActive) {
+             handleUserSpeech(text)
+         }
     }
 }
-

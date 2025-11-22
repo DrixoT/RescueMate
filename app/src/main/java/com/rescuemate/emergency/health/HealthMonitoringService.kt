@@ -157,7 +157,7 @@ class HealthMonitoringService(private val context: Context) {
             }
 
             // PRIORITY 1: Try TinyLlama (PRIMARY - local, offline, private)
-            if (isTinyLlamaInitialized && tinyLlamaService.isAvailable() && recentReadings.size >= 5) {
+            if (isTinyLlamaInitialized && recentReadings.size >= 5) {
                 val tinyLlamaResult = performTinyLlamaAnalysis(
                     currentHeartRate,
                     recentReadings,

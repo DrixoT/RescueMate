@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "1085665199694",
+    "project_id": "rescuemate-c98a3",
+    "storage_bucket": "rescuemate-c98a3.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1085665199694:android:ae2c206c185d8ee19fa51f",
+        "android_client_info": {
+          "package_name": "com.rescuemate"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAPJk4WKXi4QzoNJ9536yY--tHFOqH5CC4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

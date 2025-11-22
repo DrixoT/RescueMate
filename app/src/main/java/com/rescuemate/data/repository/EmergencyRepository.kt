@@ -7,6 +7,9 @@ import com.rescuemate.data.UserPreferences
 import com.rescuemate.emergency.data.EmergencyContact
 import com.rescuemate.emergency.data.MedicalInfo
 import com.rescuemate.emergency.data.database.EmergencyDatabaseHelper
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 
 /**
  * Emergency Repository
@@ -16,6 +19,7 @@ class EmergencyRepository(private val context: Context) {
 
     private val dbHelper = EmergencyDatabaseHelper(context)
     private val userPrefs = UserPreferences(context)
+    private val firestoreRepo = FirestoreRepository()
 
     companion object {
         private const val TAG = "EmergencyRepository"
@@ -48,6 +52,17 @@ class EmergencyRepository(private val context: Context) {
                 if (savedContact != null) {
                     Log.d(TAG, "✅ Verified contact persisted correctly: ${savedContact.name}")
                     showToast("Contact added: ${savedContact.name}")
+                    
+                    // Sync with Firestore (Fire-and-forget)
+                    CoroutineScope(Dispatchers.IO).launch {
+                        try {
+                            firestoreRepo.saveContact(savedContact)
+                            Log.d(TAG, "☁️ Contact synced to Firestore")
+                        } catch (e: Exception) {
+                            Log.e(TAG, "❌ Failed to sync contact to Firestore", e)
+                        }
+                    }
+                    
                     true
                 } else {
                     Log.w(TAG, "⚠️ Contact saved but verification failed")
@@ -87,6 +102,17 @@ class EmergencyRepository(private val context: Context) {
             if (deletedRows > 0) {
                 Log.d(TAG, " Contact deleted successfully")
                 showToast("Contact deleted")
+                
+                // Sync delete with Firestore
+                CoroutineScope(Dispatchers.IO).launch {
+                    try {
+                        firestoreRepo.deleteContact(contactId)
+                        Log.d(TAG, "☁️ Contact deletion synced to Firestore")
+                    } catch (e: Exception) {
+                        Log.e(TAG, "❌ Failed to sync contact deletion to Firestore", e)
+                    }
+                }
+                
                 true
             } else {
                 Log.e(TAG, " Failed to delete contact")
@@ -115,6 +141,17 @@ class EmergencyRepository(private val context: Context) {
             if (insertId > 0) {
                 Log.d(TAG, "✅ Medical info saved successfully")
                 showToast("Medical information saved")
+                
+                // Sync with Firestore
+                CoroutineScope(Dispatchers.IO).launch {
+                    try {
+                        firestoreRepo.saveMedicalInfo(medicalInfo)
+                        Log.d(TAG, "☁️ Medical info synced to Firestore")
+                    } catch (e: Exception) {
+                        Log.e(TAG, "❌ Failed to sync medical info to Firestore", e)
+                    }
+                }
+                
                 true
             } else {
                 Log.e(TAG, " Failed to save medical info")
