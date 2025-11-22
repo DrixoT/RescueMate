@@ -25,6 +25,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import com.rescuemate.data.UserPreferences
+import com.rescuemate.data.repository.AuthRepository
 import com.rescuemate.data.repository.EmergencyRepository
 import com.rescuemate.ui.theme.*
 import kotlinx.coroutines.delay
@@ -41,6 +42,7 @@ fun EmailLoginScreen(
     val context = LocalContext.current
     val userPrefs = remember { UserPreferences(context) }
     val repository = remember { EmergencyRepository(context) }
+    val authRepo = remember { AuthRepository(context) }
 
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
@@ -51,12 +53,6 @@ fun EmailLoginScreen(
     val scope = rememberCoroutineScope()
 
     Log.d("EmailLoginScreen", "🎨 Screen rendered")
-
-    // Simple hash function for demo (in production, use proper authentication)
-    fun hashPassword(password: String): String {
-        val bytes = MessageDigest.getInstance("SHA-256").digest(password.toByteArray())
-        return bytes.joinToString("") { "%02x".format(it) }
-    }
 
     // Login function
     fun performLogin() {
@@ -88,24 +84,26 @@ fun EmailLoginScreen(
 
         scope.launch {
             try {
-                // Hash password
-                val passwordHash = hashPassword(password)
-
-                // Save credentials (in production, verify against server first)
-                Log.d("EmailLoginScreen", "💾 Saving user credentials")
-                userPrefs.saveUserCredentials(email.trim(), passwordHash)
-                userPrefs.setOnboardingComplete(true)
-
-                Toast.makeText(context, "✅ Logged in successfully", Toast.LENGTH_SHORT).show()
-
-                Log.d("EmailLoginScreen", "✅ LOGIN SUCCESSFUL")
-                Log.d("EmailLoginScreen", "🧭 Navigating to home screen")
-
-                delay(300)
-                onLogin()
-
+                val result = authRepo.signInWithEmail(email.trim(), password)
+                
+                if (result.isSuccess) {
+                    // Explicitly mark onboarding as complete
+                    userPrefs.setOnboardingComplete(true)
+                    
+                    Toast.makeText(context, "✅ Logged in successfully", Toast.LENGTH_SHORT).show()
+                    Log.d("EmailLoginScreen", "✅ LOGIN SUCCESSFUL")
+                    Log.d("EmailLoginScreen", "🧭 Navigating to home screen")
+                    
+                    // Use onLogin callback to navigate
+                    onLogin()
+                } else {
+                    val error = result.exceptionOrNull()?.message ?: "Unknown error"
+                    Log.e("EmailLoginScreen", "❌ Login error: $error")
+                    errorMessage = "Login failed: $error"
+                    Toast.makeText(context, "❌ Login failed: $error", Toast.LENGTH_LONG).show()
+                }
             } catch (e: Exception) {
-                Log.e("EmailLoginScreen", "❌ Login error: ${e.message}", e)
+                Log.e("EmailLoginScreen", "❌ Login exception: ${e.message}", e)
                 errorMessage = "Login failed: ${e.message}"
                 Toast.makeText(context, "❌ Login failed", Toast.LENGTH_LONG).show()
             } finally {

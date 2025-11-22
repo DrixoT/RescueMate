@@ -12,7 +12,20 @@
           "package_name": "com.rescuemate"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "1085665199694-oqbusppelsghj7vhv6khdamu8nghoo56.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.rescuemate",
+            "certificate_hash": "06396e57da76d407f5a86936e0dddd4dacf35885"
+          }
+        },
+        {
+          "client_id": "1085665199694-urhu4004f6lq8bb1hgha5vbqh06ubssp.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyAPJk4WKXi4QzoNJ9536yY--tHFOqH5CC4"
@@ -20,7 +33,12 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "1085665199694-urhu4004f6lq8bb1hgha5vbqh06ubssp.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
         }
       }
     }

@@ -242,21 +242,38 @@ fun SettingsScreen(
                             brush = Brush.linearGradient(listOf(CosmicBorder, CosmicBorder))
                         )
                     ) {
-                        SettingButton(
-                            icon = Icons.Default.Logout,
-                            title = "Sign Out",
-                            description = "Log out of your account",
-                            onClick = {
-                                val userPrefs = com.rescuemate.data.UserPreferences(context)
-                                userPrefs.logout()
-                                userPrefs.setOnboardingComplete(false)
-                                
-                                // Navigate to SignIn screen and clear back stack
-                                navController?.navigate(Screen.SignIn.route) {
-                                    popUpTo(0) { inclusive = true }
+                        Column {
+                            SettingButton(
+                                icon = Icons.Default.Logout,
+                                title = "Sign Out",
+                                description = "Log out of your account",
+                                onClick = {
+                                    val userPrefs = com.rescuemate.data.UserPreferences(context)
+                                    userPrefs.logout()
+                                    userPrefs.setOnboardingComplete(false)
+
+                                    // Navigate to SignIn screen and clear back stack
+                                    navController?.navigate(Screen.SignIn.route) {
+                                        popUpTo(0) { inclusive = true }
+                                    }
                                 }
-                            }
-                        )
+                            )
+                            Divider(color = CosmicBorder)
+                            SettingButton(
+                                icon = Icons.Default.Refresh,
+                                title = "Reset App Data",
+                                description = "Clear all data and return to onboarding",
+                                onClick = {
+                                    val userPrefs = com.rescuemate.data.UserPreferences(context)
+                                    userPrefs.clearAllData()
+
+                                    // Navigate to Onboarding screen and clear back stack
+                                    navController?.navigate(Screen.Onboarding.route) {
+                                        popUpTo(0) { inclusive = true }
+                                    }
+                                }
+                            )
+                        }
                     }
                 }
 

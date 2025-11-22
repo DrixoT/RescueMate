@@ -103,7 +103,7 @@ object ValidationUtils {
     // ============================================
     
     /**
-     * Validate date of birth
+     * Validate date of birth (YYYY-MM-DD format)
      */
     fun validateDateOfBirth(dob: String?): ValidationResult {
         if (dob.isNullOrBlank()) {
@@ -128,6 +128,84 @@ object ValidationUtils {
         } catch (e: Exception) {
             return ValidationResult.error("Invalid date format. Use YYYY-MM-DD")
         }
+    }
+    
+    /**
+     * Validate date in DD/MM/YYYY format
+     */
+    fun validateDateDDMMYYYY(dateStr: String?): ValidationResult {
+        if (dateStr.isNullOrBlank()) {
+            return ValidationResult.error("Date cannot be empty")
+        }
+        
+        // Check basic format
+        if (!dateStr.matches(Regex("""\d{2}/\d{2}/\d{4}"""))) {
+            return ValidationResult.error("Invalid date format. Use DD/MM/YYYY")
+        }
+        
+        try {
+            val parts = dateStr.split("/")
+            val day = parts[0].toInt()
+            val month = parts[1].toInt()
+            val year = parts[2].toInt()
+            
+            // Validate ranges
+            if (month < 1 || month > 12) {
+                return ValidationResult.error("Month must be between 01 and 12")
+            }
+            
+            if (day < 1 || day > 31) {
+                return ValidationResult.error("Day must be between 01 and 31")
+            }
+            
+            val currentYear = java.util.Calendar.getInstance().get(java.util.Calendar.YEAR)
+            if (year < 1900 || year > currentYear) {
+                return ValidationResult.error("Year must be between 1900 and $currentYear")
+            }
+            
+            // Check days per month
+            val daysInMonth = when (month) {
+                2 -> if (isLeapYear(year)) 29 else 28
+                4, 6, 9, 11 -> 30
+                else -> 31
+            }
+            
+            if (day > daysInMonth) {
+                return ValidationResult.error("Invalid day for the given month")
+            }
+            
+            // Check if date is in the future
+            val dateFormat = SimpleDateFormat("dd/MM/yyyy", Locale.US)
+            dateFormat.isLenient = false
+            val date = dateFormat.parse(dateStr)
+            
+            if (date != null && date.time > System.currentTimeMillis()) {
+                return ValidationResult.error("Date cannot be in the future")
+            }
+            
+            // Check if person is at least 18 years old (for most forms)
+            if (date != null) {
+                val ageInMillis = System.currentTimeMillis() - date.time
+                val ageInYears = ageInMillis / (365.25 * 24 * 60 * 60 * 1000)
+                if (ageInYears < 18) {
+                    return ValidationResult.error("Must be at least 18 years old")
+                }
+                if (ageInYears > 150) {
+                    return ValidationResult.error("Invalid date of birth")
+                }
+            }
+            
+            return ValidationResult.success()
+        } catch (e: Exception) {
+            return ValidationResult.error("Invalid date format")
+        }
+    }
+    
+    /**
+     * Check if year is a leap year
+     */
+    private fun isLeapYear(year: Int): Boolean {
+        return (year % 4 == 0 && year % 100 != 0) || (year % 400 == 0)
     }
     
     /**

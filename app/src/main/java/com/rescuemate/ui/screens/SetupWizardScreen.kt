@@ -1,5 +1,6 @@
 package com.rescuemate.ui.screens
 
+import android.util.Log
 import android.widget.Toast
 import androidx.compose.animation.*
 import androidx.compose.foundation.background
@@ -32,6 +33,8 @@ import com.rescuemate.ui.theme.CosmicBackground
 import com.rescuemate.ui.theme.CosmicPrimary
 import com.rescuemate.ui.theme.CosmicTextPrimary
 import com.rescuemate.ui.theme.CosmicTextSecondary
+import com.rescuemate.utils.ValidationUtils
+import com.rescuemate.utils.ProfanityFilter
 import kotlinx.coroutines.launch
 import java.util.UUID
 
@@ -62,7 +65,7 @@ fun SetupWizardScreen(
     // Step 1: Basic Info State
     var dateOfBirth by remember { mutableStateOf("") }
     var gender by remember { mutableStateOf("") }
-    val userPhone = remember { currentUser?.phoneNumber ?: userPrefs.getUserPhone() ?: "" }
+    var userPhone by remember { mutableStateOf(currentUser?.phoneNumber ?: userPrefs.getUserPhone() ?: "") }
 
     // Step 2: Medical Info State
     var conditions by remember { mutableStateOf(listOf<String>()) }
@@ -76,18 +79,101 @@ fun SetupWizardScreen(
     var contactPhone by remember { mutableStateOf("") }
     var contactRelation by remember { mutableStateOf("") }
     
+    // Load existing user data on screen open
+    LaunchedEffect(Unit) {
+        try {
+            Log.d("SetupWizardScreen", "Loading existing user data...")
+
+            // First, load from local preferences (populated from SignUpScreen)
+            userPrefs.getUserName()?.let { name = it }
+            userPrefs.getDateOfBirth()?.let { dateOfBirth = it }
+            userPrefs.getUserGender()?.let { gender = it }
+            userPrefs.getUserPhone()?.let { userPhone = it }
+
+            // Load medical data from local preferences
+            userPrefs.getMedicalHistory()?.let { history ->
+                if (history.isNotBlank()) {
+                    conditions = history.split(", ").filter { it.isNotBlank() }
+                }
+            }
+            userPrefs.getCurrentMedication()?.let { meds ->
+                if (meds.isNotBlank()) {
+                    medications = meds.split(", ").filter { it.isNotBlank() }
+                }
+            }
+            userPrefs.getAllergies()?.let { allergyStr ->
+                if (allergyStr.isNotBlank()) {
+                    allergies = allergyStr.split(", ").filter { it.isNotBlank() }
+                }
+            }
+            userPrefs.getBloodType()?.let { bloodType = it }
+
+            // If we have minimal local data, try to load from Firestore for more complete profile
+            if (name.isBlank() || conditions.isEmpty()) {
+                Log.d("SetupWizardScreen", "Local data incomplete, fetching from Firestore...")
+
+                try {
+                    // Load user profile from Firestore
+                    val userProfile = firestoreRepo.getUserProfile()
+                    userProfile?.let { profile ->
+                        if (name.isBlank()) name = profile["name"] as? String ?: ""
+                        if (dateOfBirth.isBlank()) dateOfBirth = profile["dateOfBirth"] as? String ?: ""
+                        if (gender.isBlank()) gender = profile["gender"] as? String ?: ""
+                        if (userPhone.isBlank()) userPhone = profile["phone"] as? String ?: ""
+                    }
+
+                    // Load medical info from Firestore
+                    val medicalInfo = firestoreRepo.getMedicalInfo()
+                    medicalInfo?.let { info ->
+                        if (conditions.isEmpty()) conditions = info.knownConditions
+                        if (allergies.isEmpty()) allergies = info.allergies
+                        if (bloodType.isBlank()) bloodType = info.bloodType ?: ""
+                        if (medications.isEmpty()) {
+                            medications = info.currentMedications.map { it.name }
+                        }
+                    }
+
+                    // Load emergency contacts from Firestore
+                    val contacts = firestoreRepo.getContacts()
+                    contacts.firstOrNull()?.let { contact ->
+                        contactName = contact.name
+                        contactPhone = contact.phoneNumber
+                        contactRelation = contact.relationship ?: ""
+                    }
+
+                    Log.d("SetupWizardScreen", "Successfully loaded data from Firestore")
+                } catch (e: Exception) {
+                    Log.w("SetupWizardScreen", "Failed to load from Firestore, using local data only: ${e.message}")
+                }
+            }
+
+            Log.d("SetupWizardScreen", "Data loading complete - Name: '$name', DOB: '$dateOfBirth', Conditions: ${conditions.size}, Contacts: '$contactName'")
+        } catch (e: Exception) {
+            Log.e("SetupWizardScreen", "Error loading user data: ${e.message}", e)
+            Toast.makeText(context, "Error loading profile data", Toast.LENGTH_SHORT).show()
+        }
+    }
+
     // Validation Helpers
     val dobRegex = Regex("""\d{2}/\d{2}/\d{4}""")
     val phoneRegex = Regex("""^\+?[0-9\s-]{10,}$""")
 
     fun canProceed(): Boolean {
         return when (currentStep) {
-            0 -> name.isNotBlank()
-            1 -> dateOfBirth.matches(dobRegex) && gender.isNotBlank()
+            0 -> name.isNotBlank() && !ProfanityFilter.containsProfanity(name)
+            1 -> {
+                val dateValid = ValidationUtils.validateDateDDMMYYYY(dateOfBirth).isValid
+                dateValid && gender.isNotBlank()
+            }
             2 -> bloodType.isNotBlank()
-            3 -> contactName.all { it.isLetter() || it.isWhitespace() } && 
-                 contactName.isNotBlank() && 
-                 contactPhone.matches(phoneRegex)
+            3 -> {
+                val nameValid = contactName.all { it.isLetter() || it.isWhitespace() } && 
+                     contactName.isNotBlank() && 
+                     !ProfanityFilter.containsProfanity(contactName)
+                val phoneValid = contactPhone.matches(phoneRegex)
+                val relationValid = contactRelation.isBlank() || !ProfanityFilter.containsProfanity(contactRelation)
+                nameValid && phoneValid && relationValid
+            }
             else -> false
         }
     }
@@ -247,6 +333,12 @@ fun SetupWizardScreen(
                                 label = { Text("Full Name") },
                                 modifier = Modifier.fillMaxWidth(),
                                 singleLine = true,
+                                isError = name.isNotEmpty() && ProfanityFilter.containsProfanity(name),
+                                supportingText = {
+                                    if (name.isNotEmpty() && ProfanityFilter.containsProfanity(name)) {
+                                        Text("Name contains inappropriate language", color = MaterialTheme.colorScheme.error)
+                                    }
+                                },
                                 colors = OutlinedTextFieldDefaults.colors(
                                     focusedBorderColor = CosmicPrimary,
                                     unfocusedBorderColor = CosmicTextSecondary
@@ -272,10 +364,13 @@ fun SetupWizardScreen(
                                 label = { Text("Date of Birth (DD/MM/YYYY)") },
                                 modifier = Modifier.fillMaxWidth(),
                                 singleLine = true,
-                                isError = dateOfBirth.isNotEmpty() && !dateOfBirth.matches(dobRegex),
+                                isError = dateOfBirth.isNotEmpty() && !ValidationUtils.validateDateDDMMYYYY(dateOfBirth).isValid,
                                 supportingText = {
-                                    if (dateOfBirth.isNotEmpty() && !dateOfBirth.matches(dobRegex)) {
-                                        Text("Format: DD/MM/YYYY", color = MaterialTheme.colorScheme.error)
+                                    if (dateOfBirth.isNotEmpty()) {
+                                        val validation = ValidationUtils.validateDateDDMMYYYY(dateOfBirth)
+                                        if (!validation.isValid) {
+                                            Text(validation.errorMessage ?: "Invalid date", color = MaterialTheme.colorScheme.error)
+                                        }
                                     }
                                 },
                                 colors = OutlinedTextFieldDefaults.colors(
@@ -406,10 +501,15 @@ fun SetupWizardScreen(
                                 label = { Text("Contact Name") },
                                 modifier = Modifier.fillMaxWidth(),
                                 singleLine = true,
-                                isError = contactName.isNotEmpty() && contactName.any { !it.isLetter() && !it.isWhitespace() },
+                                isError = contactName.isNotEmpty() && (contactName.any { !it.isLetter() && !it.isWhitespace() } || ProfanityFilter.containsProfanity(contactName)),
                                 supportingText = {
-                                    if (contactName.isNotEmpty() && contactName.any { !it.isLetter() && !it.isWhitespace() }) {
-                                        Text("Letters only", color = MaterialTheme.colorScheme.error)
+                                    if (contactName.isNotEmpty()) {
+                                        when {
+                                            ProfanityFilter.containsProfanity(contactName) -> 
+                                                Text("Name contains inappropriate language", color = MaterialTheme.colorScheme.error)
+                                            contactName.any { !it.isLetter() && !it.isWhitespace() } -> 
+                                                Text("Letters only", color = MaterialTheme.colorScheme.error)
+                                        }
                                     }
                                 },
                                 colors = OutlinedTextFieldDefaults.colors(
@@ -443,6 +543,12 @@ fun SetupWizardScreen(
                                 label = { Text("Relationship (e.g., Mom, Spouse)") },
                                 modifier = Modifier.fillMaxWidth(),
                                 singleLine = true,
+                                isError = contactRelation.isNotEmpty() && ProfanityFilter.containsProfanity(contactRelation),
+                                supportingText = {
+                                    if (contactRelation.isNotEmpty() && ProfanityFilter.containsProfanity(contactRelation)) {
+                                        Text("Contains inappropriate language", color = MaterialTheme.colorScheme.error)
+                                    }
+                                },
                                 colors = OutlinedTextFieldDefaults.colors(
                                     focusedBorderColor = CosmicPrimary,
                                     unfocusedBorderColor = CosmicTextSecondary

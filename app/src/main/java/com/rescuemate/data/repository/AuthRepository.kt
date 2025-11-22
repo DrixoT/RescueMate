@@ -45,12 +45,14 @@ class AuthRepository(private val context: Context) {
     }
     
     private fun getWebClientIdFromGoogleServices(): String? {
-        return try {
+        // Try multiple methods to read the Web Client ID
+        
+        // Method 1: Try reading from assets (if file was manually added to assets)
+        try {
             val inputStream: InputStream = context.assets.open("google-services.json")
             val jsonString = inputStream.bufferedReader().use { it.readText() }
             val json = JSONObject(jsonString)
             
-            // Try to get web client ID from oauth_client array
             val clientArray = json.getJSONArray("client")
             if (clientArray.length() > 0) {
                 val client = clientArray.getJSONObject(0)
@@ -61,27 +63,126 @@ class AuthRepository(private val context: Context) {
                     for (i in 0 until oauthClients.length()) {
                         val oauthClient = oauthClients.getJSONObject(i)
                         if (oauthClient.optInt("client_type") == 3) {
-                            return oauthClient.getString("client_id")
+                            val clientId = oauthClient.getString("client_id")
+                            Log.d("AuthRepository", "Found Web Client ID from assets: ${clientId.take(20)}...")
+                            return clientId
                         }
                     }
                 }
             }
-            null
         } catch (e: Exception) {
-            Log.w("AuthRepository", "Could not read web client ID from google-services.json", e)
-            null
+            Log.d("AuthRepository", "Could not read from assets, trying file system...", e)
+        }
+        
+        // Method 2: Try reading from the app directory (google-services.json location)
+        try {
+            val file = java.io.File(context.filesDir.parent, "google-services.json")
+            if (!file.exists()) {
+                // Try alternative path
+                val altFile = java.io.File(context.applicationInfo.dataDir, "google-services.json")
+                if (altFile.exists()) {
+                    val jsonString = altFile.readText()
+                    val json = JSONObject(jsonString)
+                    return extractWebClientId(json)
+                }
+            } else {
+                val jsonString = file.readText()
+                val json = JSONObject(jsonString)
+                return extractWebClientId(json)
+            }
+        } catch (e: Exception) {
+            Log.d("AuthRepository", "Could not read from file system", e)
+        }
+        
+        // Method 3: Fallback to hardcoded value from the actual google-services.json
+        // This is the Web Client ID from the project's google-services.json file
+        val fallbackClientId = "1085665199694-urhu4004f6lq8bb1hgha5vbqh06ubssp.apps.googleusercontent.com"
+        Log.d("AuthRepository", "Using fallback Web Client ID")
+        return fallbackClientId
+    }
+    
+    private fun extractWebClientId(json: JSONObject): String? {
+        try {
+            val clientArray = json.getJSONArray("client")
+            if (clientArray.length() > 0) {
+                val client = clientArray.getJSONObject(0)
+                val oauthClients = client.optJSONArray("oauth_client")
+                
+                if (oauthClients != null && oauthClients.length() > 0) {
+                    for (i in 0 until oauthClients.length()) {
+                        val oauthClient = oauthClients.getJSONObject(i)
+                        if (oauthClient.optInt("client_type") == 3) {
+                            val clientId = oauthClient.getString("client_id")
+                            Log.d("AuthRepository", "Extracted Web Client ID: ${clientId.take(20)}...")
+                            return clientId
+                        }
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.w("AuthRepository", "Error extracting Web Client ID", e)
+        }
+        return null
+    }
+
+    // ============================================
+    // EMAIL AUTHENTICATION
+    // ============================================
+    
+    suspend fun signInWithEmail(email: String, password: String): Result<FirebaseUser> {
+        return try {
+            val authResult = auth.signInWithEmailAndPassword(email, password).await()
+            val user = authResult.user ?: throw Exception("Firebase User is null")
+            
+            // Update local preferences
+            updateLocalUser(user)
+            
+            Result.success(user)
+        } catch (e: Exception) {
+            Log.e("AuthRepository", "Email Sign-In failed", e)
+            Result.failure(e)
+        }
+    }
+    
+    suspend fun signUpWithEmail(email: String, password: String): Result<FirebaseUser> {
+        return try {
+            val authResult = auth.createUserWithEmailAndPassword(email, password).await()
+            val user = authResult.user ?: throw Exception("Firebase User is null")
+            
+            // Update local preferences
+            updateLocalUser(user)
+            
+            Result.success(user)
+        } catch (e: Exception) {
+            Log.e("AuthRepository", "Email Sign-Up failed", e)
+            Result.failure(e)
         }
     }
 
+    // ============================================
+    // GOOGLE AUTHENTICATION
+    // ============================================
+
     fun getGoogleSignInIntent(): Intent {
+        // Check if we have a valid configuration
+        if (getWebClientIdFromGoogleServices() == null) {
+            Log.e("AuthRepository", "⚠️ MISSING WEB CLIENT ID in google-services.json! Google Sign-In will fail.")
+        }
         return googleSignInClient.signInIntent
     }
 
     suspend fun signInWithGoogle(intent: Intent): Result<FirebaseUser> {
+        // First check if we have the necessary configuration
+        if (getWebClientIdFromGoogleServices() == null) {
+            val errorMsg = "Configuration Error: Missing Web Client ID in google-services.json. Please update your Firebase configuration."
+            Log.e("AuthRepository", errorMsg)
+            return Result.failure(Exception(errorMsg))
+        }
+
         return try {
             val task = GoogleSignIn.getSignedInAccountFromIntent(intent)
             val account = task.getResult(ApiException::class.java)
-            val idToken = account.idToken ?: throw Exception("Google ID Token is null")
+            val idToken = account.idToken ?: throw Exception("Google ID Token is null - Check Web Client ID configuration")
             val credential = GoogleAuthProvider.getCredential(idToken, null)
             val authResult = auth.signInWithCredential(credential).await()
             val user = authResult.user ?: throw Exception("Firebase User is null")

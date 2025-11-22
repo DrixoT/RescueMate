@@ -14,13 +14,21 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.rescuemate.R
 import com.rescuemate.data.UserPreferences
+import com.rescuemate.data.repository.AuthRepository
 import com.rescuemate.data.repository.EmergencyRepository
 import com.rescuemate.ui.theme.*
+import com.rescuemate.utils.ValidationUtils
+import com.rescuemate.utils.ProfanityFilter
+import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.time.Period
 import java.time.format.DateTimeFormatter
@@ -34,8 +42,13 @@ fun SignUpScreen(
     val context = LocalContext.current
     val userPrefs = remember { UserPreferences(context) }
     val repository = remember { EmergencyRepository(context) }
+    val authRepo = remember { AuthRepository(context) }
+    val scope = rememberCoroutineScope()
 
     var name by remember { mutableStateOf("") }
+    var email by remember { mutableStateOf("") }
+    var password by remember { mutableStateOf("") }
+    var confirmPassword by remember { mutableStateOf("") }
     var dateOfBirth by remember { mutableStateOf("") }
     var gender by remember { mutableStateOf("") }
     var phone by remember { mutableStateOf("") }
@@ -44,6 +57,8 @@ fun SignUpScreen(
     var allergies by remember { mutableStateOf("") }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var isLoading by remember { mutableStateOf(false) }
+    var passwordVisible by remember { mutableStateOf(false) }
+    var confirmPasswordVisible by remember { mutableStateOf(false) }
 
     // Calculate age from date of birth
     fun calculateAge(dob: String): String {
@@ -63,10 +78,43 @@ fun SignUpScreen(
     fun saveUserProfile() {
         Log.d("SignUpScreen", "Starting validation and save")
 
+        // Validate date with proper date validation
+        val dateValidation = ValidationUtils.validateDateDDMMYYYY(dateOfBirth)
+        if (!dateValidation.isValid) {
+            errorMessage = dateValidation.errorMessage
+            Toast.makeText(context, dateValidation.errorMessage, Toast.LENGTH_LONG).show()
+            return
+        }
+
         val calculatedAge = calculateAge(dateOfBirth)
         if (calculatedAge.isEmpty()) {
             errorMessage = "Please enter a valid date of birth (DD/MM/YYYY)"
             Toast.makeText(context, "Please enter a valid date of birth", Toast.LENGTH_LONG).show()
+            return
+        }
+        
+        // Check for profanity in name
+        if (ProfanityFilter.containsProfanity(name)) {
+            errorMessage = "Name contains inappropriate language"
+            Toast.makeText(context, "Name contains inappropriate language", Toast.LENGTH_LONG).show()
+            return
+        }
+
+        // Validate Email and Password
+        val emailValidation = ValidationUtils.validateEmail(email)
+        if (!emailValidation.isValid) {
+            errorMessage = emailValidation.errorMessage
+            return
+        }
+
+        val passwordValidation = ValidationUtils.validatePassword(password)
+        if (!passwordValidation.isValid) {
+            errorMessage = passwordValidation.errorMessage
+            return
+        }
+
+        if (password != confirmPassword) {
+            errorMessage = "Passwords do not match"
             return
         }
 
@@ -81,49 +129,65 @@ fun SignUpScreen(
             return
         }
 
-        Log.d("SignUpScreen", "Validation passed - Saving user data")
+        Log.d("SignUpScreen", "Validation passed - Creating account")
 
         isLoading = true
         errorMessage = null
 
-        try {
-            // Save user profile to SharedPreferences
-            Log.d("SignUpScreen", "Saving user profile to SharedPreferences")
-            userPrefs.saveUserProfile(
-                name = name.trim(),
-                age = calculatedAge,
-                gender = gender,
-                phone = phone.trim()
-            )
-            userPrefs.saveDateOfBirth(dateOfBirth.trim())
-            Toast.makeText(context, "Profile saved", Toast.LENGTH_SHORT).show()
+        scope.launch {
+            try {
+                // Create account with Firebase
+                val signUpResult = authRepo.signUpWithEmail(email.trim(), password)
+                
+                if (signUpResult.isSuccess) {
+                    Log.d("SignUpScreen", "✅ Account created successfully")
+                    
+                    // Save user profile to SharedPreferences
+                    Log.d("SignUpScreen", "Saving user profile to SharedPreferences")
+                    userPrefs.saveUserProfile(
+                        name = name.trim(),
+                        age = calculatedAge,
+                        gender = gender,
+                        phone = phone.trim()
+                    )
+                    userPrefs.saveDateOfBirth(dateOfBirth.trim())
+                    
+                    // Save medical information
+                    userPrefs.saveMedicalInfo(
+                        medicalHistory = medicalHistory.trim(),
+                        currentMedication = currentMedication.trim(),
+                        allergies = allergies.trim()
+                    )
+                    
+                    // Save login credentials locally (optional, Firebase SDK manages session)
+                    // But we do it to keep local consistency with existing logic
+                    // We store a hash or token, but since we just signed up, we can skip manual credential saving 
+                    // or save email for display. The AuthRepository updates local user data on login/signup.
 
-            // Save medical information
-            Log.d("SignUpScreen", "Saving medical information")
-            userPrefs.saveMedicalInfo(
-                medicalHistory = medicalHistory.trim(),
-                currentMedication = currentMedication.trim(),
-                allergies = allergies.trim()
-            )
-            Toast.makeText(context, "Medical info saved", Toast.LENGTH_SHORT).show()
+                    // Mark onboarding as complete
+                    userPrefs.setOnboardingComplete(true)
 
-            // Mark onboarding as complete
-            userPrefs.setOnboardingComplete(true)
+                    Log.d("SignUpScreen", "ALL DATA SAVED SUCCESSFULLY")
+                    Log.d("SignUpScreen", "Navigating to Setup Wizard")
 
-            Log.d("SignUpScreen", "ALL DATA SAVED SUCCESSFULLY")
-            Log.d("SignUpScreen", "Navigating to home screen")
+                    Toast.makeText(context, "Registration complete!", Toast.LENGTH_SHORT).show()
 
-            Toast.makeText(context, "Registration complete!", Toast.LENGTH_SHORT).show()
+                    // Navigate to Setup Wizard (via onComplete)
+                    onComplete()
+                } else {
+                    val error = signUpResult.exceptionOrNull()?.message ?: "Registration failed"
+                    Log.e("SignUpScreen", "❌ Registration error: $error")
+                    errorMessage = "Registration failed: $error"
+                    Toast.makeText(context, errorMessage, Toast.LENGTH_LONG).show()
+                }
 
-            // Navigate to home
-            onComplete()
-
-        } catch (e: Exception) {
-            Log.e("SignUpScreen", "Exception during save: ${e.message}", e)
-            errorMessage = "Error saving data: ${e.message}"
-            Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_LONG).show()
-        } finally {
-            isLoading = false
+            } catch (e: Exception) {
+                Log.e("SignUpScreen", "Exception during save: ${e.message}", e)
+                errorMessage = "Error saving data: ${e.message}"
+                Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_LONG).show()
+            } finally {
+                isLoading = false
+            }
         }
     }
 
@@ -195,6 +259,79 @@ fun SignUpScreen(
                     verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
                     Text(
+                        text = "Account Credentials",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = CosmicTextSecondary,
+                        letterSpacing = 2.sp
+                    )
+
+                    OutlinedTextField(
+                        value = email,
+                        onValueChange = {
+                            email = it
+                            errorMessage = null
+                        },
+                        label = { Text("Email Address *") },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = textFieldColors(),
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
+                        isError = (errorMessage?.contains("email", ignoreCase = true) == true)
+                    )
+
+                    OutlinedTextField(
+                        value = password,
+                        onValueChange = {
+                            password = it
+                            errorMessage = null
+                        },
+                        label = { Text("Password *") },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = textFieldColors(),
+                        singleLine = true,
+                        visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                        trailingIcon = {
+                            val image = if (passwordVisible)
+                                Icons.Filled.Visibility
+                            else Icons.Filled.VisibilityOff
+
+                            val description = if (passwordVisible) "Hide password" else "Show password"
+
+                            IconButton(onClick = { passwordVisible = !passwordVisible }) {
+                                Icon(imageVector = image, description)
+                            }
+                        },
+                        isError = (errorMessage?.contains("password", ignoreCase = true) == true)
+                    )
+
+                    OutlinedTextField(
+                        value = confirmPassword,
+                        onValueChange = {
+                            confirmPassword = it
+                            errorMessage = null
+                        },
+                        label = { Text("Confirm Password *") },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = textFieldColors(),
+                        singleLine = true,
+                        visualTransformation = if (confirmPasswordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                        trailingIcon = {
+                            val image = if (confirmPasswordVisible)
+                                Icons.Filled.Visibility
+                            else Icons.Filled.VisibilityOff
+
+                            val description = if (confirmPasswordVisible) "Hide password" else "Show password"
+
+                            IconButton(onClick = { confirmPasswordVisible = !confirmPasswordVisible }) {
+                                Icon(imageVector = image, description)
+                            }
+                        },
+                        isError = (errorMessage?.contains("match", ignoreCase = true) == true)
+                    )
+
+                    Text(
                         text = "Personal Information",
                         style = MaterialTheme.typography.labelSmall,
                         color = CosmicTextSecondary,
@@ -212,7 +349,13 @@ fun SignUpScreen(
                         modifier = Modifier.fillMaxWidth(),
                         colors = textFieldColors(),
                         singleLine = true,
-                        isError = errorMessage?.contains("name", ignoreCase = true) == true
+                        isError = (errorMessage?.contains("name", ignoreCase = true) == true) || 
+                                  (name.isNotEmpty() && ProfanityFilter.containsProfanity(name)),
+                        supportingText = {
+                            if (name.isNotEmpty() && ProfanityFilter.containsProfanity(name)) {
+                                Text("Name contains inappropriate language", color = MaterialTheme.colorScheme.error)
+                            }
+                        }
                     )
 
                     Row(
@@ -231,7 +374,17 @@ fun SignUpScreen(
                             modifier = Modifier.weight(1f),
                             colors = textFieldColors(),
                             singleLine = true,
-                            isError = errorMessage?.contains("date", ignoreCase = true) == true || errorMessage?.contains("birth", ignoreCase = true) == true
+                            isError = (errorMessage?.contains("date", ignoreCase = true) == true || 
+                                      errorMessage?.contains("birth", ignoreCase = true) == true) ||
+                                      (dateOfBirth.isNotEmpty() && !ValidationUtils.validateDateDDMMYYYY(dateOfBirth).isValid),
+                            supportingText = {
+                                if (dateOfBirth.isNotEmpty()) {
+                                    val validation = ValidationUtils.validateDateDDMMYYYY(dateOfBirth)
+                                    if (!validation.isValid) {
+                                        Text(validation.errorMessage ?: "Invalid date", color = MaterialTheme.colorScheme.error)
+                                    }
+                                }
+                            }
                         )
 
                         var expanded by remember { mutableStateOf(false) }

@@ -56,6 +56,14 @@ fun SignInScreen(
                     val signInResult = authRepo.signInWithGoogle(intent)
                     if (signInResult.isSuccess) {
                         Log.d("SignInScreen", "✅ Google Sign-In successful")
+                        
+                        // Explicitly ensure onboarding is marked complete for returning users
+                        userPrefs.setOnboardingComplete(true)
+                        
+                        // Verify login state was saved
+                        val isLoggedIn = userPrefs.isLoggedIn()
+                        Log.d("SignInScreen", "Login state after Google auth: $isLoggedIn")
+                        
                         Toast.makeText(context, "Welcome back!", Toast.LENGTH_SHORT).show()
                         onSignIn()
                     } else {

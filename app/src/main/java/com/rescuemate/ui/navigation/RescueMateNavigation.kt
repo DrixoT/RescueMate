@@ -34,11 +34,9 @@ fun RescueMateNavigation(
     
     // Determine start destination based on login status
     val startDestination = when {
-        // If user is logged in, check if setup is complete
-        userPrefs.isLoggedIn() -> {
-            if (userPrefs.isSetupComplete()) Screen.Home.route else Screen.SetupWizard.route
-        }
-        // If onboarding is complete but not logged in, go to sign in
+        // If user is logged in AND setup is complete, go to home
+        userPrefs.isLoggedIn() && userPrefs.isSetupComplete() -> Screen.Home.route
+        // If onboarding is complete (regardless of login status), go to sign in
         userPrefs.isOnboardingComplete() -> Screen.SignIn.route
         // Otherwise, show onboarding
         else -> Screen.Onboarding.route
