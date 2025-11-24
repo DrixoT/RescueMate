@@ -56,40 +56,71 @@ fun PhoneLoginScreen(
             errorMessage = "Please enter a phone number"
             return
         }
-        isLoading = true
-        errorMessage = null
         
         // Normalize phone number to E.164 format (remove spaces, dashes, parentheses)
         val normalizedPhone = phone.replace(Regex("[\\s\\-\\(\\)]"), "")
+        
+        // Validate phone number format (E.164: +[country code][number])
+        if (!normalizedPhone.matches(Regex("^\\+[1-9]\\d{1,14}$"))) {
+            errorMessage = "Please enter a valid phone number with country code (e.g., +1234567890)"
+            Log.w("PhoneLoginScreen", "Invalid phone number format: $phone (normalized: $normalizedPhone)")
+            return
+        }
+        
+        Log.d("PhoneLoginScreen", "📱 Sending OTP to: ${normalizedPhone.take(5)}...")
+        isLoading = true
+        errorMessage = null
         
         val callbacks = object : PhoneAuthProvider.OnVerificationStateChangedCallbacks() {
             override fun onVerificationCompleted(credential: PhoneAuthCredential) {
                 // For test numbers, Firebase auto-verifies
                 isLoading = false
+                Log.d("PhoneLoginScreen", "✅ Phone auto-verification completed")
                 scope.launch {
                     val result = authRepo.verifyWithCredential(credential)
                     if (result.isSuccess) {
                         isPhoneVerified = true
                         isCodeSent = true
                         userPrefs.saveUserCredentials("phone_${phone}", "PHONE_AUTH_TOKEN")
+                        Log.d("PhoneLoginScreen", "✅ Phone verified automatically")
                         Toast.makeText(context, "Phone verified automatically!", Toast.LENGTH_SHORT).show()
                         onLoginSuccess()
                     } else {
-                        errorMessage = "Auto-verification failed: ${result.exceptionOrNull()?.message}"
+                        val error = result.exceptionOrNull()?.message ?: "Unknown error"
+                        errorMessage = "Auto-verification failed: $error"
+                        Log.e("PhoneLoginScreen", "❌ Auto-verification failed: $error")
                     }
                 }
             }
 
             override fun onVerificationFailed(e: FirebaseException) {
                 isLoading = false
-                errorMessage = "Verification failed: ${e.message}"
-                Log.e("PhoneLoginScreen", "Verification failed", e)
+                val errorMsg = when {
+                    e.message?.contains("quota", ignoreCase = true) == true ||
+                    e.message?.contains("exceeded", ignoreCase = true) == true ->
+                        "SMS quota exceeded. Please try again later."
+                    e.message?.contains("invalid", ignoreCase = true) == true ||
+                    e.message?.contains("format", ignoreCase = true) == true ->
+                        "Invalid phone number format. Please check and try again."
+                    e.message?.contains("network", ignoreCase = true) == true ||
+                    e.message?.contains("connection", ignoreCase = true) == true ->
+                        "Network error. Please check your connection."
+                    e.message?.contains("too many", ignoreCase = true) == true ->
+                        "Too many attempts. Please try again later."
+                    else -> "Verification failed: ${e.message ?: "Unknown error"}"
+                }
+                errorMessage = errorMsg
+                Log.e("PhoneLoginScreen", "❌ Phone verification failed: ${e.javaClass.simpleName}", e)
+                Log.e("PhoneLoginScreen", "   Error code: ${e.errorCode}")
+                Log.e("PhoneLoginScreen", "   Error message: ${e.message}")
+                Log.e("PhoneLoginScreen", "   User message: $errorMsg")
             }
 
             override fun onCodeSent(vId: String, token: PhoneAuthProvider.ForceResendingToken) {
                 verificationId = vId
                 isCodeSent = true
                 isLoading = false
+                Log.d("PhoneLoginScreen", "✅ Verification code sent successfully")
                 Toast.makeText(context, "Code sent! Check your messages.", Toast.LENGTH_SHORT).show()
             }
         }
@@ -103,6 +134,7 @@ fun PhoneLoginScreen(
             return
         }
         
+        Log.d("PhoneLoginScreen", "🔐 Verifying OTP code...")
         isLoading = true
         errorMessage = null
         scope.launch {
@@ -111,12 +143,25 @@ fun PhoneLoginScreen(
             if (result.isSuccess) {
                 isPhoneVerified = true
                 userPrefs.saveUserCredentials("phone_${phone}", "PHONE_AUTH_TOKEN")
+                Log.d("PhoneLoginScreen", "✅ Phone verified successfully")
                 Toast.makeText(context, "Phone verified successfully!", Toast.LENGTH_SHORT).show()
                 onLoginSuccess()
             } else {
-                val errorMsg = result.exceptionOrNull()?.message ?: "Invalid code"
+                val exception = result.exceptionOrNull()
+                val errorMsg = when {
+                    exception?.message?.contains("invalid", ignoreCase = true) == true ||
+                    exception?.message?.contains("code", ignoreCase = true) == true ->
+                        "Invalid verification code. Please check and try again."
+                    exception?.message?.contains("expired", ignoreCase = true) == true ->
+                        "Verification code expired. Please request a new code."
+                    exception?.message?.contains("network", ignoreCase = true) == true ->
+                        "Network error. Please check your connection."
+                    else -> exception?.message ?: "Invalid code"
+                }
                 errorMessage = errorMsg
-                Log.e("PhoneLoginScreen", "Verification error: $errorMsg")
+                Log.e("PhoneLoginScreen", "❌ OTP verification error: ${exception?.javaClass?.simpleName}", exception)
+                Log.e("PhoneLoginScreen", "   Error message: ${exception?.message}")
+                Log.e("PhoneLoginScreen", "   User message: $errorMsg")
             }
         }
     }

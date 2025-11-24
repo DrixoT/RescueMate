@@ -111,6 +111,33 @@ val Typography = Typography(
         fontSize = 11.sp,
         lineHeight = 16.sp,
         letterSpacing = 0.5.sp,
-    ),
+    )
+)
+
+// Extended Typography for custom access if needed, though Material3 supports limited custom slots.
+// We can also just define them as extensions or separate vals.
+
+val AsciiLarge = TextStyle(
+    fontFamily = FontFamily.Monospace,
+    fontWeight = FontWeight.Bold,
+    fontSize = 24.sp,
+    lineHeight = 32.sp,
+    letterSpacing = 2.sp,
+)
+
+val AsciiMedium = TextStyle(
+    fontFamily = FontFamily.Monospace,
+    fontWeight = FontWeight.Medium,
+    fontSize = 16.sp,
+    lineHeight = 24.sp,
+    letterSpacing = 1.5.sp,
+)
+
+val AsciiSmall = TextStyle(
+    fontFamily = FontFamily.Monospace,
+    fontWeight = FontWeight.Normal,
+    fontSize = 12.sp,
+    lineHeight = 16.sp,
+    letterSpacing = 1.sp,
 )
 

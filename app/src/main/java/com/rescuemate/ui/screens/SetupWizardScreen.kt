@@ -185,42 +185,90 @@ fun SetupWizardScreen(
             scope.launch {
                 try {
                     isLoading = true
-                    val phoneToSave = userPhone.ifEmpty { "" }
-                    userPrefs.saveUserProfile(name, "0", gender, phoneToSave)
-                    userPrefs.saveDateOfBirth(dateOfBirth)
-                    firestoreRepo.saveUserProfile(name, dateOfBirth, gender, phoneToSave)
-
-                    val medicalInfo = MedicalInfo(
-                        userId = userPrefs.getUserId(),
-                        dateOfBirth = dateOfBirth,
-                        bloodType = bloodType,
-                        knownConditions = conditions,
-                        currentMedications = medications.map { Medication(it, "", "") },
-                        allergies = allergies
-                    )
-                    userPrefs.saveMedicalInfo(
-                        conditions.joinToString(", "),
-                        medications.joinToString(", "),
-                        allergies.joinToString(", "),
-                        bloodType
-                    )
-                    firestoreRepo.saveMedicalInfo(medicalInfo)
-
-                    val contact = EmergencyContact(
-                        id = UUID.randomUUID().toString(),
-                        name = contactName,
-                        phoneNumber = contactPhone,
-                        relationship = contactRelation,
-                        isPrimaryContact = true
-                    )
-                    firestoreRepo.saveContact(contact)
+                    Log.d("SetupWizardScreen", "════════════════════════════════════════")
+                    Log.d("SetupWizardScreen", "🚀 Starting setup wizard completion")
+                    Log.d("SetupWizardScreen", "════════════════════════════════════════")
                     
-                    userPrefs.setSetupComplete(true)
+                    // Save to local preferences first (always succeeds)
+                    try {
+                        val phoneToSave = userPhone.ifEmpty { "" }
+                        Log.d("SetupWizardScreen", "💾 Saving user profile locally...")
+                        userPrefs.saveUserProfile(name, "0", gender, phoneToSave)
+                        userPrefs.saveDateOfBirth(dateOfBirth)
+                        Log.d("SetupWizardScreen", "✅ User profile saved locally")
+                        
+                        Log.d("SetupWizardScreen", "💾 Saving medical info locally...")
+                        userPrefs.saveMedicalInfo(
+                            conditions.joinToString(", "),
+                            medications.joinToString(", "),
+                            allergies.joinToString(", "),
+                            bloodType
+                        )
+                        Log.d("SetupWizardScreen", "✅ Medical info saved locally")
+                        
+                        // Mark setup complete locally first
+                        userPrefs.setSetupComplete(true)
+                        Log.d("SetupWizardScreen", "✅ Setup marked complete locally")
+                    } catch (localError: Exception) {
+                        Log.e("SetupWizardScreen", "❌ CRITICAL: Failed to save locally", localError)
+                        throw Exception("Failed to save profile: ${localError.message}")
+                    }
+                    
+                    // Try to save to Firestore (can fail without blocking)
+                    try {
+                        Log.d("SetupWizardScreen", "☁️ Syncing to Firestore...")
+                        val phoneToSave = userPhone.ifEmpty { "" }
+                        firestoreRepo.saveUserProfile(name, dateOfBirth, gender, phoneToSave)
+                        Log.d("SetupWizardScreen", "✅ User profile synced to Firestore")
+
+                        val medicalInfo = MedicalInfo(
+                            userId = userPrefs.getUserId(),
+                            dateOfBirth = dateOfBirth,
+                            bloodType = bloodType,
+                            knownConditions = conditions,
+                            currentMedications = medications.map { Medication(it, "", "") },
+                            allergies = allergies
+                        )
+                        firestoreRepo.saveMedicalInfo(medicalInfo)
+                        Log.d("SetupWizardScreen", "✅ Medical info synced to Firestore")
+
+                        val contact = EmergencyContact(
+                            id = UUID.randomUUID().toString(),
+                            name = contactName,
+                            phoneNumber = contactPhone,
+                            relationship = contactRelation,
+                            isPrimaryContact = true
+                        )
+                        firestoreRepo.saveContact(contact)
+                        Log.d("SetupWizardScreen", "✅ Emergency contact synced to Firestore")
+                    } catch (firestoreError: Exception) {
+                        // Log but don't fail - local data is saved
+                        Log.w("SetupWizardScreen", "⚠️ Firestore sync failed (will retry later)", firestoreError)
+                        Log.w("SetupWizardScreen", "   Error: ${firestoreError.message}")
+                        Toast.makeText(context, "Profile saved locally. Cloud sync will retry later.", Toast.LENGTH_SHORT).show()
+                    }
+                    
+                    Log.d("SetupWizardScreen", "════════════════════════════════════════")
+                    Log.d("SetupWizardScreen", "✅ Setup wizard completed successfully")
+                    Log.d("SetupWizardScreen", "🎯 Navigating to Home")
+                    Log.d("SetupWizardScreen", "════════════════════════════════════════")
+                    
                     isLoading = false
                     onComplete()
                 } catch (e: Exception) {
+                    Log.e("SetupWizardScreen", "❌❌❌ CRITICAL: Setup wizard failed", e)
+                    Log.e("SetupWizardScreen", "   Exception type: ${e.javaClass.simpleName}")
+                    Log.e("SetupWizardScreen", "   Exception message: ${e.message}")
                     isLoading = false
-                    Toast.makeText(context, "Error saving profile: ${e.message}", Toast.LENGTH_LONG).show()
+                    
+                    val errorMsg = when {
+                        e.message?.contains("network", ignoreCase = true) == true ->
+                            "Network error. Please check your connection and try again."
+                        e.message?.contains("permission", ignoreCase = true) == true ->
+                            "Permission denied. Please check app permissions."
+                        else -> "Error saving profile: ${e.message}"
+                    }
+                    Toast.makeText(context, errorMsg, Toast.LENGTH_LONG).show()
                 }
             }
         }

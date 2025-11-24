@@ -136,57 +136,101 @@ fun SignUpScreen(
 
         scope.launch {
             try {
+                Log.d("SignUpScreen", "🔄 Starting Firebase account creation for: ${email.trim()}")
+                
                 // Create account with Firebase
                 val signUpResult = authRepo.signUpWithEmail(email.trim(), password)
                 
                 if (signUpResult.isSuccess) {
-                    Log.d("SignUpScreen", "✅ Account created successfully")
+                    Log.d("SignUpScreen", "✅ Firebase account created successfully")
                     
                     // Save user profile to SharedPreferences
-                    Log.d("SignUpScreen", "Saving user profile to SharedPreferences")
-                    userPrefs.saveUserProfile(
-                        name = name.trim(),
-                        age = calculatedAge,
-                        gender = gender,
-                        phone = phone.trim()
-                    )
-                    userPrefs.saveDateOfBirth(dateOfBirth.trim())
+                    Log.d("SignUpScreen", "💾 Saving user profile to SharedPreferences")
+                    try {
+                        userPrefs.saveUserProfile(
+                            name = name.trim(),
+                            age = calculatedAge,
+                            gender = gender,
+                            phone = phone.trim()
+                        )
+                        Log.d("SignUpScreen", "✅ User profile saved: $name, age $calculatedAge, gender $gender")
+                    } catch (e: Exception) {
+                        Log.e("SignUpScreen", "❌ Error saving user profile", e)
+                        throw Exception("Failed to save user profile: ${e.message}")
+                    }
+                    
+                    try {
+                        userPrefs.saveDateOfBirth(dateOfBirth.trim())
+                        Log.d("SignUpScreen", "✅ Date of birth saved")
+                    } catch (e: Exception) {
+                        Log.e("SignUpScreen", "❌ Error saving date of birth", e)
+                        throw Exception("Failed to save date of birth: ${e.message}")
+                    }
                     
                     // Save medical information
-                    userPrefs.saveMedicalInfo(
-                        medicalHistory = medicalHistory.trim(),
-                        currentMedication = currentMedication.trim(),
-                        allergies = allergies.trim()
-                    )
+                    try {
+                        Log.d("SignUpScreen", "💾 Saving medical information")
+                        userPrefs.saveMedicalInfo(
+                            medicalHistory = medicalHistory.trim(),
+                            currentMedication = currentMedication.trim(),
+                            allergies = allergies.trim()
+                        )
+                        Log.d("SignUpScreen", "✅ Medical info saved")
+                    } catch (e: Exception) {
+                        Log.e("SignUpScreen", "❌ Error saving medical info", e)
+                        // Medical info is optional, don't fail registration
+                        Log.w("SignUpScreen", "Continuing without medical info...")
+                    }
                     
-                    // Save login credentials locally (optional, Firebase SDK manages session)
-                    // But we do it to keep local consistency with existing logic
-                    // We store a hash or token, but since we just signed up, we can skip manual credential saving 
-                    // or save email for display. The AuthRepository updates local user data on login/signup.
-
                     // Mark onboarding as complete
-                    userPrefs.setOnboardingComplete(true)
+                    try {
+                        userPrefs.setOnboardingComplete(true)
+                        Log.d("SignUpScreen", "✅ Onboarding marked as complete")
+                    } catch (e: Exception) {
+                        Log.e("SignUpScreen", "❌ Error setting onboarding complete", e)
+                        throw Exception("Failed to set onboarding status: ${e.message}")
+                    }
 
-                    Log.d("SignUpScreen", "ALL DATA SAVED SUCCESSFULLY")
-                    Log.d("SignUpScreen", "Navigating to Setup Wizard")
+                    Log.d("SignUpScreen", "✅ ALL DATA SAVED SUCCESSFULLY")
+                    Log.d("SignUpScreen", "🧭 Navigating to Setup Wizard")
 
                     Toast.makeText(context, "Registration complete!", Toast.LENGTH_SHORT).show()
 
                     // Navigate to Setup Wizard (via onComplete)
                     onComplete()
                 } else {
-                    val error = signUpResult.exceptionOrNull()?.message ?: "Registration failed"
-                    Log.e("SignUpScreen", "❌ Registration error: $error")
-                    errorMessage = "Registration failed: $error"
-                    Toast.makeText(context, errorMessage, Toast.LENGTH_LONG).show()
+                    val exception = signUpResult.exceptionOrNull()
+                    val errorMsg = when {
+                        exception?.message?.contains("email address is already in use", ignoreCase = true) == true ->
+                            "This email is already registered. Please sign in instead."
+                        exception?.message?.contains("network", ignoreCase = true) == true ->
+                            "Network error. Please check your internet connection."
+                        exception?.message?.contains("weak-password", ignoreCase = true) == true ->
+                            "Password is too weak. Please use a stronger password."
+                        exception?.message?.contains("invalid-email", ignoreCase = true) == true ->
+                            "Invalid email format. Please check your email."
+                        else -> "Registration failed: ${exception?.message ?: "Unknown error"}"
+                    }
+                    
+                    Log.e("SignUpScreen", "❌ Registration error: $errorMsg", exception)
+                    errorMessage = errorMsg
+                    Toast.makeText(context, errorMsg, Toast.LENGTH_LONG).show()
                 }
 
             } catch (e: Exception) {
-                Log.e("SignUpScreen", "Exception during save: ${e.message}", e)
-                errorMessage = "Error saving data: ${e.message}"
-                Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_LONG).show()
+                Log.e("SignUpScreen", "❌ Critical exception during registration", e)
+                val errorMsg = when {
+                    e.message?.contains("network", ignoreCase = true) == true ->
+                        "Network error. Please check your connection and try again."
+                    e.message?.contains("permission", ignoreCase = true) == true ->
+                        "Permission error. Please check app permissions."
+                    else -> "Error: ${e.message ?: "Unknown error occurred"}"
+                }
+                errorMessage = errorMsg
+                Toast.makeText(context, errorMsg, Toast.LENGTH_LONG).show()
             } finally {
                 isLoading = false
+                Log.d("SignUpScreen", "🏁 Registration flow completed (loading=$isLoading)")
             }
         }
     }

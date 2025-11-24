@@ -97,7 +97,11 @@ class AuthRepository(private val context: Context) {
         // Method 3: Fallback to hardcoded value from the actual google-services.json
         // This is the Web Client ID from the project's google-services.json file
         val fallbackClientId = "1085665199694-urhu4004f6lq8bb1hgha5vbqh06ubssp.apps.googleusercontent.com"
-        Log.d("AuthRepository", "Using fallback Web Client ID")
+        Log.w("AuthRepository", "⚠️ Using fallback Web Client ID")
+        Log.w("AuthRepository", "   This may cause Google Sign-In to fail if the fallback doesn't match your Firebase project")
+        Log.w("AuthRepository", "   Fallback ID: ${fallbackClientId.take(30)}...")
+        Log.w("AuthRepository", "   To fix: Ensure google-services.json is in app/ directory with correct Web Client ID")
+        Log.w("AuthRepository", "   Expected location: app/google-services.json")
         return fallbackClientId
     }
     
@@ -131,15 +135,38 @@ class AuthRepository(private val context: Context) {
     
     suspend fun signInWithEmail(email: String, password: String): Result<FirebaseUser> {
         return try {
+            Log.d("AuthRepository", "🔄 Starting email sign-in for: ${email.take(10)}...")
             val authResult = auth.signInWithEmailAndPassword(email, password).await()
             val user = authResult.user ?: throw Exception("Firebase User is null")
+            
+            Log.d("AuthRepository", "✅ Email sign-in successful for user: ${user.uid}")
             
             // Update local preferences
             updateLocalUser(user)
             
             Result.success(user)
         } catch (e: Exception) {
-            Log.e("AuthRepository", "Email Sign-In failed", e)
+            Log.e("AuthRepository", "❌ Email Sign-In failed: ${e.javaClass.simpleName}", e)
+            Log.e("AuthRepository", "   Error message: ${e.message}")
+            
+            // Extract Firebase error code if available in message
+            val errorCode = e.message?.let { msg ->
+                when {
+                    msg.contains("ERROR_USER_NOT_FOUND", ignoreCase = true) -> "USER_NOT_FOUND"
+                    msg.contains("ERROR_WRONG_PASSWORD", ignoreCase = true) -> "WRONG_PASSWORD"
+                    msg.contains("ERROR_INVALID_EMAIL", ignoreCase = true) -> "INVALID_EMAIL"
+                    msg.contains("ERROR_TOO_MANY_REQUESTS", ignoreCase = true) -> "TOO_MANY_REQUESTS"
+                    msg.contains("ERROR_NETWORK_REQUEST_FAILED", ignoreCase = true) -> "NETWORK_ERROR"
+                    msg.contains("ERROR_INVALID_CREDENTIAL", ignoreCase = true) -> "INVALID_CREDENTIAL"
+                    else -> null
+                }
+            }
+            
+            if (errorCode != null) {
+                Log.e("AuthRepository", "   Firebase error code: $errorCode")
+            }
+            
+            Log.e("AuthRepository", "   Stack trace: ${e.stackTraceToString().take(500)}")
             Result.failure(e)
         }
     }
@@ -180,19 +207,45 @@ class AuthRepository(private val context: Context) {
         }
 
         return try {
+            Log.d("AuthRepository", "🔄 Starting Google Sign-In authentication...")
             val task = GoogleSignIn.getSignedInAccountFromIntent(intent)
             val account = task.getResult(ApiException::class.java)
+            
             val idToken = account.idToken ?: throw Exception("Google ID Token is null - Check Web Client ID configuration")
+            Log.d("AuthRepository", "✅ Google account retrieved, ID token present")
+            
             val credential = GoogleAuthProvider.getCredential(idToken, null)
             val authResult = auth.signInWithCredential(credential).await()
             val user = authResult.user ?: throw Exception("Firebase User is null")
+            
+            Log.d("AuthRepository", "✅ Firebase authentication successful for user: ${user.uid}")
             
             // Update local preferences
             updateLocalUser(user)
             
             Result.success(user)
+        } catch (e: ApiException) {
+            // Handle ApiException specifically to extract status code
+            val statusCode = e.statusCode
+            val errorMessage = when (statusCode) {
+                10 -> "Configuration error: Wrong Web Client ID or SHA-1 certificate fingerprint. Please verify your Firebase configuration."
+                8 -> "Google Sign-In service error. Please try again."
+                7 -> "Network error. Please check your internet connection."
+                12500 -> "Sign-in was cancelled"
+                12501 -> "Another sign-in is already in progress"
+                else -> "Google Sign-In failed with error code: $statusCode"
+            }
+            
+            Log.e("AuthRepository", "❌ Google Sign-In ApiException")
+            Log.e("AuthRepository", "   Status Code: $statusCode")
+            Log.e("AuthRepository", "   Error Message: ${e.message}")
+            Log.e("AuthRepository", "   Full Exception:", e)
+            
+            Result.failure(Exception("$errorMessage (Code: $statusCode)"))
         } catch (e: Exception) {
-            Log.e("AuthRepository", "Google Sign-In failed", e)
+            Log.e("AuthRepository", "❌ Google Sign-In failed: ${e.javaClass.simpleName}", e)
+            Log.e("AuthRepository", "   Error message: ${e.message}")
+            Log.e("AuthRepository", "   Stack trace: ${e.stackTraceToString()}")
             Result.failure(e)
         }
     }
@@ -212,20 +265,52 @@ class AuthRepository(private val context: Context) {
     }
     
     private fun updateLocalUser(user: FirebaseUser) {
-        val email = user.email ?: ""
-        // We don't have the password hash for Google Auth, using a placeholder or handling it in UserPreferences logic
-        // For now, we just ensure the session is marked active
-        userPrefs.saveUserCredentials(email, "GOOGLE_AUTH_TOKEN_PLACEHOLDER")
-        
-        // Save profile info if available
-        userPrefs.saveUserProfile(
-            name = user.displayName ?: "",
-            age = userPrefs.getUserAge() ?: "", // Keep existing if present
-            gender = userPrefs.getUserGender() ?: "", // Keep existing
-            phone = user.phoneNumber ?: userPrefs.getUserPhone() ?: ""
-        )
-        
-        userPrefs.setUserId(user.uid)
+        try {
+            Log.d("AuthRepository", "📝 Updating local user data for: ${user.uid}")
+            
+            val email = user.email ?: run {
+                Log.w("AuthRepository", "⚠️ User email is null, using placeholder")
+                "user@rescuemate.local"
+            }
+            
+            // Save credentials with null safety
+            val authToken = when {
+                user.providerData.any { it.providerId == "google.com" } -> "GOOGLE_AUTH_TOKEN"
+                user.providerData.any { it.providerId == "phone" } -> "PHONE_AUTH_TOKEN"
+                user.providerData.any { it.providerId == "apple.com" } -> "APPLE_AUTH_TOKEN"
+                else -> "AUTH_TOKEN_PLACEHOLDER"
+            }
+            
+            userPrefs.saveUserCredentials(email, authToken)
+            Log.d("AuthRepository", "✅ Credentials saved")
+            
+            // Save profile info with null safety and defaults
+            val displayName = user.displayName?.takeIf { it.isNotBlank() } 
+                ?: userPrefs.getUserName()
+                ?: "User"
+            
+            val age = userPrefs.getUserAge() ?: ""
+            val gender = userPrefs.getUserGender() ?: ""
+            val phone = user.phoneNumber?.takeIf { it.isNotBlank() } 
+                ?: userPrefs.getUserPhone() 
+                ?: ""
+            
+            userPrefs.saveUserProfile(
+                name = displayName,
+                age = age,
+                gender = gender,
+                phone = phone
+            )
+            Log.d("AuthRepository", "✅ Profile info updated")
+            
+            userPrefs.setUserId(user.uid)
+            Log.d("AuthRepository", "✅ User ID set: ${user.uid}")
+            
+        } catch (e: Exception) {
+            Log.e("AuthRepository", "❌ Failed to update local user data", e)
+            // Don't throw - authentication succeeded, local data update is secondary
+            Log.w("AuthRepository", "Continuing despite local data update failure")
+        }
     }
 
     fun sendVerificationCode(

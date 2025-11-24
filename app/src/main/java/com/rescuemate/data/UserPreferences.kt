@@ -35,13 +35,21 @@ class UserPreferences(context: Context) {
     // User Authentication
     fun saveUserCredentials(email: String, passwordHash: String) {
         Log.d(TAG, "💾 Saving user credentials for: $email")
-        prefs.edit().apply {
-            putString(KEY_USER_EMAIL, email)
-            putString(KEY_USER_PASSWORD_HASH, passwordHash)
-            putBoolean(KEY_IS_LOGGED_IN, true)
-            apply()
+        try {
+            require(email.isNotBlank()) { "Email cannot be blank" }
+            require(passwordHash.isNotBlank()) { "Password hash cannot be blank" }
+            
+            prefs.edit().apply {
+                putString(KEY_USER_EMAIL, email)
+                putString(KEY_USER_PASSWORD_HASH, passwordHash)
+                putBoolean(KEY_IS_LOGGED_IN, true)
+                apply()
+            }
+            Log.d(TAG, "✅ User credentials saved successfully")
+        } catch (e: Exception) {
+            Log.e(TAG, "❌ Failed to save user credentials", e)
+            throw IllegalArgumentException("Failed to save credentials: ${e.message}", e)
         }
-        Log.d(TAG, "✅ User credentials saved successfully")
     }
 
     fun isLoggedIn(): Boolean {
@@ -59,14 +67,22 @@ class UserPreferences(context: Context) {
     // User Profile Data
     fun saveUserProfile(name: String, age: String, gender: String, phone: String) {
         Log.d(TAG, "💾 Saving user profile - Name: $name, Age: $age, Gender: $gender, Phone: $phone")
-        prefs.edit().apply {
-            putString(KEY_USER_NAME, name)
-            putString(KEY_USER_AGE, age)
-            putString(KEY_USER_GENDER, gender)
-            putString(KEY_USER_PHONE, phone)
-            apply()
+        try {
+            // Validate required fields
+            require(name.isNotBlank()) { "Name cannot be blank" }
+            
+            prefs.edit().apply {
+                putString(KEY_USER_NAME, name.trim())
+                putString(KEY_USER_AGE, age.trim())
+                putString(KEY_USER_GENDER, gender.trim())
+                putString(KEY_USER_PHONE, phone.trim())
+                apply()
+            }
+            Log.d(TAG, "✅ User profile saved successfully")
+        } catch (e: Exception) {
+            Log.e(TAG, "❌ Failed to save user profile", e)
+            throw IllegalArgumentException("Failed to save profile: ${e.message}", e)
         }
-        Log.d(TAG, "✅ User profile saved successfully")
     }
 
     fun getUserName(): String? {

@@ -49,39 +49,116 @@ fun SignInScreen(
     val googleSignInLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
     ) { result ->
+        Log.d("SignInScreen", "Google Sign-In launcher result: resultCode=${result.resultCode}")
+        
         if (result.resultCode == Activity.RESULT_OK) {
             val intent = result.data
             if (intent != null) {
                 scope.launch {
-                    val signInResult = authRepo.signInWithGoogle(intent)
-                    if (signInResult.isSuccess) {
-                        Log.d("SignInScreen", "✅ Google Sign-In successful")
+                    try {
+                        Log.d("SignInScreen", "🔄 Processing Google Sign-In result...")
+                        val signInResult = authRepo.signInWithGoogle(intent)
                         
-                        // Explicitly ensure onboarding is marked complete for returning users
-                        userPrefs.setOnboardingComplete(true)
-                        
-                        // Verify login state was saved
-                        val isLoggedIn = userPrefs.isLoggedIn()
-                        Log.d("SignInScreen", "Login state after Google auth: $isLoggedIn")
-                        
-                        Toast.makeText(context, "Welcome back!", Toast.LENGTH_SHORT).show()
-                        onSignIn()
-                    } else {
-                        Log.e("SignInScreen", "❌ Google Sign-In failed", signInResult.exceptionOrNull())
-                        Toast.makeText(context, "Sign in failed: ${signInResult.exceptionOrNull()?.message}", Toast.LENGTH_SHORT).show()
+                        if (signInResult.isSuccess) {
+                            Log.d("SignInScreen", "✅ Google Sign-In successful")
+                            
+                            // Explicitly ensure onboarding is marked complete for returning users
+                            try {
+                                userPrefs.setOnboardingComplete(true)
+                                Log.d("SignInScreen", "✅ Onboarding marked complete")
+                            } catch (e: Exception) {
+                                Log.e("SignInScreen", "❌ Error setting onboarding complete", e)
+                            }
+                            
+                            // Verify login state was saved
+                            val isLoggedIn = userPrefs.isLoggedIn()
+                            Log.d("SignInScreen", "Login state after Google auth: $isLoggedIn")
+                            
+                            if (!isLoggedIn) {
+                                Log.e("SignInScreen", "❌ Login state not properly saved after Google auth!")
+                                Toast.makeText(context, "Authentication error - please try again", Toast.LENGTH_LONG).show()
+                                return@launch
+                            }
+                            
+                            Toast.makeText(context, "Welcome back!", Toast.LENGTH_SHORT).show()
+                            Log.d("SignInScreen", "🧭 Navigating to home/setup...")
+                            onSignIn()
+                        } else {
+                            val exception = signInResult.exceptionOrNull()
+                            val errorMsg = when {
+                                exception?.message?.contains("statusCode=10", ignoreCase = true) == true ||
+                                exception?.message?.contains("Code: 10", ignoreCase = true) == true ->
+                                    "Configuration error: Please verify Firebase setup and SHA-1 certificate fingerprint"
+                                exception?.message?.contains("statusCode=8", ignoreCase = true) == true ||
+                                exception?.message?.contains("Code: 8", ignoreCase = true) == true ->
+                                    "Google Sign-In service error. Please try again later."
+                                exception?.message?.contains("statusCode=7", ignoreCase = true) == true ||
+                                exception?.message?.contains("Code: 7", ignoreCase = true) == true ->
+                                    "Network error. Please check your internet connection."
+                                exception?.message?.contains("statusCode=12500", ignoreCase = true) == true ||
+                                exception?.message?.contains("Code: 12500", ignoreCase = true) == true ->
+                                    "Sign-in was cancelled"
+                                exception?.message?.contains("statusCode=12501", ignoreCase = true) == true ||
+                                exception?.message?.contains("Code: 12501", ignoreCase = true) == true ->
+                                    "Another sign-in is already in progress"
+                                exception?.message?.contains("Web Client ID", ignoreCase = true) == true ->
+                                    "Configuration error: Please contact support"
+                                exception?.message?.contains("network", ignoreCase = true) == true ->
+                                    "Network error. Please check your internet connection."
+                                else -> {
+                                    Log.e("SignInScreen", "Full error details: ${exception?.javaClass?.simpleName} - ${exception?.message}")
+                                    "Sign in failed: ${exception?.message ?: "Unknown error"}"
+                                }
+                            }
+                            
+                            Log.e("SignInScreen", "❌ Google Sign-In failed: $errorMsg", exception)
+                            Toast.makeText(context, errorMsg, Toast.LENGTH_LONG).show()
+                        }
+                    } catch (e: Exception) {
+                        Log.e("SignInScreen", "❌ Critical error in Google Sign-In flow", e)
+                        Toast.makeText(context, "Sign in error: ${e.message}", Toast.LENGTH_LONG).show()
                     }
                 }
+            } else {
+                Log.e("SignInScreen", "❌ Google Sign-In intent is null")
+                Toast.makeText(context, "Sign in failed - no data received", Toast.LENGTH_SHORT).show()
             }
+        } else {
+            Log.w("SignInScreen", "Google Sign-In cancelled or failed (resultCode=${result.resultCode})")
+            Toast.makeText(context, "Sign in cancelled", Toast.LENGTH_SHORT).show()
         }
     }
     
     // Function to handle successful sign in (Mock/Email)
     fun handleSuccessfulSignIn(email: String = "user@rescuemate.com") {
-        // Save login state
-        userPrefs.saveUserCredentials(email, "hashed_password")
-        // userPrefs.setOnboardingComplete(true) // Done by intro/setup flow now
-        android.util.Log.d("SignInScreen", "✅ User signed in and saved credentials")
-        onSignIn()
+        Log.d("SignInScreen", "🔄 Starting mock sign-in for: $email")
+        Log.w("SignInScreen", "⚠️ NOTE: This is a MOCK implementation - Apple Sign-In not fully integrated")
+        Log.w("SignInScreen", "   Firebase features requiring authentication may not work with mock sign-in")
+        try {
+            // Save login state
+            userPrefs.saveUserCredentials(email, "MOCK_AUTH_PLACEHOLDER")
+            Log.d("SignInScreen", "✅ Mock credentials saved")
+            
+            // Mark onboarding as complete for returning users
+            userPrefs.setOnboardingComplete(true)
+            Log.d("SignInScreen", "✅ Onboarding marked as complete")
+            
+            // Verify login state
+            val isLoggedIn = userPrefs.isLoggedIn()
+            Log.d("SignInScreen", "✅ Login state verified: $isLoggedIn")
+            
+            if (!isLoggedIn) {
+                Log.e("SignInScreen", "❌ Login state not properly saved!")
+                Toast.makeText(context, "Login failed - please try again", Toast.LENGTH_SHORT).show()
+                return
+            }
+            
+            Log.d("SignInScreen", "✅ Mock sign-in successful, navigating...")
+            onSignIn()
+        } catch (e: Exception) {
+            Log.e("SignInScreen", "❌ Error during mock sign-in", e)
+            Toast.makeText(context, "Sign in failed: ${e.message}", Toast.LENGTH_SHORT).show()
+        }
     }
 
     Box(
@@ -170,7 +247,11 @@ fun SignInScreen(
                 SignInButton(
                     text = stringResource(R.string.continue_with_apple),
                     icon = Icons.Default.PhoneIphone, // Apple icon alternative
-                    onClick = { handleSuccessfulSignIn("apple_user@rescuemate.com") }
+                    onClick = {
+                        Log.d("SignInScreen", "🍎 Apple Sign-In clicked (Mock)")
+                        Toast.makeText(context, "Apple Sign-In (Demo Mode)", Toast.LENGTH_SHORT).show()
+                        handleSuccessfulSignIn("apple_user@rescuemate.com")
+                    }
                 )
                 SignInButton(
                     text = stringResource(R.string.continue_with_phone),

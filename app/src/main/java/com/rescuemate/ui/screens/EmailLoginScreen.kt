@@ -87,8 +87,26 @@ fun EmailLoginScreen(
                 val result = authRepo.signInWithEmail(email.trim(), password)
                 
                 if (result.isSuccess) {
+                    Log.d("EmailLoginScreen", "✅ Firebase sign-in successful")
+                    
                     // Explicitly mark onboarding as complete
-                    userPrefs.setOnboardingComplete(true)
+                    try {
+                        userPrefs.setOnboardingComplete(true)
+                        Log.d("EmailLoginScreen", "✅ Onboarding marked complete")
+                    } catch (e: Exception) {
+                        Log.e("EmailLoginScreen", "❌ Error setting onboarding complete", e)
+                    }
+                    
+                    // Verify login state
+                    val isLoggedIn = userPrefs.isLoggedIn()
+                    Log.d("EmailLoginScreen", "Login state verified: $isLoggedIn")
+                    
+                    if (!isLoggedIn) {
+                        Log.e("EmailLoginScreen", "❌ Login state not properly saved!")
+                        errorMessage = "Authentication error - please try again"
+                        Toast.makeText(context, errorMessage, Toast.LENGTH_LONG).show()
+                        return@launch
+                    }
                     
                     Toast.makeText(context, "✅ Logged in successfully", Toast.LENGTH_SHORT).show()
                     Log.d("EmailLoginScreen", "✅ LOGIN SUCCESSFUL")
@@ -97,17 +115,48 @@ fun EmailLoginScreen(
                     // Use onLogin callback to navigate
                     onLogin()
                 } else {
-                    val error = result.exceptionOrNull()?.message ?: "Unknown error"
-                    Log.e("EmailLoginScreen", "❌ Login error: $error")
-                    errorMessage = "Login failed: $error"
-                    Toast.makeText(context, "❌ Login failed: $error", Toast.LENGTH_LONG).show()
+                    val exception = result.exceptionOrNull()
+                    val errorMsg = when {
+                        exception?.message?.contains("no user record", ignoreCase = true) == true ||
+                        exception?.message?.contains("user not found", ignoreCase = true) == true ||
+                        exception?.message?.contains("ERROR_USER_NOT_FOUND", ignoreCase = true) == true ->
+                            "Account not found. Please create an account."
+                        exception?.message?.contains("wrong password", ignoreCase = true) == true ||
+                        exception?.message?.contains("invalid-credential", ignoreCase = true) == true ||
+                        exception?.message?.contains("ERROR_WRONG_PASSWORD", ignoreCase = true) == true ||
+                        exception?.message?.contains("ERROR_INVALID_CREDENTIAL", ignoreCase = true) == true ->
+                            "Incorrect password. Please try again."
+                        exception?.message?.contains("network", ignoreCase = true) == true ||
+                        exception?.message?.contains("ERROR_NETWORK", ignoreCase = true) == true ->
+                            "Network error. Please check your connection."
+                        exception?.message?.contains("too many requests", ignoreCase = true) == true ||
+                        exception?.message?.contains("ERROR_TOO_MANY_REQUESTS", ignoreCase = true) == true ->
+                            "Too many failed attempts. Please try again later."
+                        exception?.message?.contains("invalid-email", ignoreCase = true) == true ||
+                        exception?.message?.contains("ERROR_INVALID_EMAIL", ignoreCase = true) == true ->
+                            "Invalid email format. Please check your email."
+                        else -> {
+                            Log.e("EmailLoginScreen", "Full error details: ${exception?.javaClass?.simpleName} - ${exception?.message}")
+                            "Login failed: ${exception?.message ?: "Unknown error"}"
+                        }
+                    }
+                    
+                    Log.e("EmailLoginScreen", "❌ Login error: $errorMsg", exception)
+                    errorMessage = errorMsg
+                    Toast.makeText(context, errorMsg, Toast.LENGTH_LONG).show()
                 }
             } catch (e: Exception) {
-                Log.e("EmailLoginScreen", "❌ Login exception: ${e.message}", e)
-                errorMessage = "Login failed: ${e.message}"
-                Toast.makeText(context, "❌ Login failed", Toast.LENGTH_LONG).show()
+                Log.e("EmailLoginScreen", "❌ Critical error during login", e)
+                val errorMsg = when {
+                    e.message?.contains("network", ignoreCase = true) == true ->
+                        "Network error. Please check your connection."
+                    else -> "Error: ${e.message ?: "Unknown error occurred"}"
+                }
+                errorMessage = errorMsg
+                Toast.makeText(context, errorMsg, Toast.LENGTH_LONG).show()
             } finally {
                 isLoading = false
+                Log.d("EmailLoginScreen", "🏁 Login flow completed")
             }
         }
     }

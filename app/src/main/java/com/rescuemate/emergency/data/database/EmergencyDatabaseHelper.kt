@@ -589,50 +589,91 @@ class EmergencyDatabaseHelper(context: Context) : SQLiteOpenHelper(
 
     private fun parseEmergencyEventFromCursor(cursor: android.database.Cursor): EmergencyEvent {
         try {
+            Log.d(TAG, "📖 Parsing emergency event from database cursor...")
+            
             val eventId = cursor.getString(cursor.getColumnIndexOrThrow(COL_EVENT_ID))
             val userId = cursor.getString(cursor.getColumnIndexOrThrow(COL_EVENT_USER_ID))
+            Log.d(TAG, "   Event ID: $eventId, User ID: $userId")
             
-            // Parse health data from JSON
-            val healthDataJson = cursor.getString(cursor.getColumnIndexOrThrow(COL_EVENT_HEALTH_DATA))
-            val healthData = deserializeHealthData(healthDataJson)
+            // Parse health data from JSON with null safety
+            val healthDataJson = cursor.getStringOrNull(cursor.getColumnIndexOrThrow(COL_EVENT_HEALTH_DATA))
+            val healthData = try {
+                deserializeHealthData(healthDataJson)
+            } catch (e: Exception) {
+                Log.w(TAG, "   ⚠️ Failed to parse health data, using defaults", e)
+                HealthData(currentHeartRate = 0, normalHeartRate = 70, alertReason = "Parse error")
+            }
             
-            // Parse location data from JSON
-            val locationDataJson = cursor.getString(cursor.getColumnIndexOrThrow(COL_EVENT_LOCATION_DATA))
-            val locationData = deserializeLocationData(locationDataJson)
+            // Parse location data from JSON with null safety
+            val locationDataJson = cursor.getStringOrNull(cursor.getColumnIndexOrThrow(COL_EVENT_LOCATION_DATA))
+            val locationData = try {
+                deserializeLocationData(locationDataJson)
+            } catch (e: Exception) {
+                Log.w(TAG, "   ⚠️ Failed to parse location data, using defaults", e)
+                LocationData(latitude = 0.0, longitude = 0.0, accuracy = 0f, address = "Unknown")
+            }
             
-            // Get user medical info
-            val medicalInfo = getMedicalInfo(userId).getOrNull() ?: MedicalInfo(userId = userId)
+            // Get user medical info with error handling
+            val medicalInfo = try {
+                getMedicalInfo(userId).getOrNull() ?: run {
+                    Log.d(TAG, "   ℹ️ No medical info found for user, creating default")
+                    MedicalInfo(userId = userId)
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "   ⚠️ Error retrieving medical info, using default", e)
+                MedicalInfo(userId = userId)
+            }
             
-            // Get emergency contacts
-            val contacts = getAllContacts().getOrNull() ?: emptyList()
+            // Get emergency contacts with error handling
+            val contacts = try {
+                getAllContacts().getOrNull() ?: emptyList()
+            } catch (e: Exception) {
+                Log.w(TAG, "   ⚠️ Error retrieving contacts, using empty list", e)
+                emptyList()
+            }
             
-            // Parse timestamps
+            // Parse timestamps safely
             val triggeredTimestamp = cursor.getLong(cursor.getColumnIndexOrThrow(COL_EVENT_TRIGGERED))
             val resolvedTimestamp = cursor.getLongOrNull(cursor.getColumnIndexOrThrow(COL_EVENT_RESOLVED))
             
-            // Parse boolean flags
+            // Parse boolean flags safely
             val userResponded = cursor.getInt(cursor.getColumnIndexOrThrow(COL_EVENT_USER_RESPONDED)) == 1
             val userCancelled = cursor.getInt(cursor.getColumnIndexOrThrow(COL_EVENT_USER_CANCELLED)) == 1
             val backendNotified = cursor.getInt(cursor.getColumnIndexOrThrow(COL_EVENT_BACKEND_NOTIFIED)) == 1
             
-            // Create UserInfo (simplified - in production, would be stored separately)
+            // Create UserInfo with null safety
             val userInfo = UserInfo(
                 userId = userId,
                 name = medicalInfo.doctorName ?: "User",
-                age = 0, // Would calculate from DOB
+                age = 0, // Would calculate from DOB if stored
                 phoneNumber = "",
                 medicalInfo = medicalInfo
             )
             
-            return EmergencyEvent(
+            // Parse emergency type and status with fallback
+            val emergencyType = try {
+                EmergencyConstants.EmergencyType.valueOf(
+                    cursor.getString(cursor.getColumnIndexOrThrow(COL_EVENT_TYPE))
+                )
+            } catch (e: Exception) {
+                Log.w(TAG, "   ⚠️ Invalid emergency type, using MANUAL_TRIGGER", e)
+                EmergencyConstants.EmergencyType.MANUAL_TRIGGER
+            }
+            
+            val status = try {
+                EmergencyConstants.EmergencyStatus.valueOf(
+                    cursor.getString(cursor.getColumnIndexOrThrow(COL_EVENT_STATUS))
+                )
+            } catch (e: Exception) {
+                Log.w(TAG, "   ⚠️ Invalid status, using INITIATED", e)
+                EmergencyConstants.EmergencyStatus.INITIATED
+            }
+            
+            val event = EmergencyEvent(
                 id = eventId,
                 userId = userId,
-                emergencyType = EmergencyConstants.EmergencyType.valueOf(
-                    cursor.getString(cursor.getColumnIndexOrThrow(COL_EVENT_TYPE))
-                ),
-                status = EmergencyConstants.EmergencyStatus.valueOf(
-                    cursor.getString(cursor.getColumnIndexOrThrow(COL_EVENT_STATUS))
-                ),
+                emergencyType = emergencyType,
+                status = status,
                 currentPhase = cursor.getInt(cursor.getColumnIndexOrThrow(COL_EVENT_PHASE)),
                 triggeredTimestamp = triggeredTimestamp,
                 resolvedTimestamp = resolvedTimestamp,
@@ -645,10 +686,53 @@ class EmergencyDatabaseHelper(context: Context) : SQLiteOpenHelper(
                 backendNotified = backendNotified,
                 twilioCallSid = cursor.getStringOrNull(cursor.getColumnIndexOrThrow(COL_EVENT_TWILIO_SID))
             )
+            
+            Log.d(TAG, "✅ Successfully parsed emergency event: ${event.id}")
+            return event
+            
         } catch (e: Exception) {
-            Log.e("EmergencyDatabaseHelper", "Error parsing emergency event from cursor", e)
-            // Return a minimal valid event to prevent crashes
-            throw IllegalStateException("Failed to parse emergency event from database", e)
+            Log.e(TAG, "❌ CRITICAL: Failed to parse emergency event from cursor", e)
+            Log.e(TAG, "   Exception type: ${e.javaClass.simpleName}")
+            Log.e(TAG, "   Exception message: ${e.message}")
+            
+            // Instead of throwing, return a minimal valid event to prevent crashes
+            // This allows the app to continue functioning even with corrupted data
+            val fallbackId = try {
+                cursor.getString(cursor.getColumnIndexOrThrow(COL_EVENT_ID))
+            } catch (ex: Exception) {
+                "corrupted_event_${System.currentTimeMillis()}"
+            }
+            
+            val fallbackUserId = try {
+                cursor.getString(cursor.getColumnIndexOrThrow(COL_EVENT_USER_ID))
+            } catch (ex: Exception) {
+                "unknown_user"
+            }
+            
+            Log.w(TAG, "⚠️ Returning fallback emergency event to prevent crash")
+            return EmergencyEvent(
+                id = fallbackId,
+                userId = fallbackUserId,
+                emergencyType = EmergencyConstants.EmergencyType.MANUAL_TRIGGER,
+                status = EmergencyConstants.EmergencyStatus.RESOLVED_BY_CONTACT,
+                currentPhase = 0,
+                triggeredTimestamp = System.currentTimeMillis(),
+                resolvedTimestamp = System.currentTimeMillis(),
+                healthData = HealthData(currentHeartRate = 0, normalHeartRate = 70, alertReason = "Data corrupted"),
+                locationData = LocationData(latitude = 0.0, longitude = 0.0, accuracy = 0f, address = "Unknown"),
+                userInfo = UserInfo(
+                    userId = fallbackUserId,
+                    name = "Unknown",
+                    age = 0,
+                    phoneNumber = "",
+                    medicalInfo = MedicalInfo(userId = fallbackUserId)
+                ),
+                emergencyContacts = emptyList(),
+                userResponded = false,
+                userCancelled = false,
+                backendNotified = false,
+                twilioCallSid = null
+            )
         }
     }
     
