@@ -421,7 +421,7 @@ For rapid verification after changes:
 
 ### Unit Tests to Add
 ```kotlin
-// AuthRepositoryTest.kt
+// toryTest.kt
 - testSignUpWithEmail_Success()
 - testSignUpWithEmail_DuplicateUser()
 - testSignUpWithEmail_NetworkError()

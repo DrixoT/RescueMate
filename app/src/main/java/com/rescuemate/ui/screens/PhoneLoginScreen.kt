@@ -111,7 +111,6 @@ fun PhoneLoginScreen(
                 }
                 errorMessage = errorMsg
                 Log.e("PhoneLoginScreen", "❌ Phone verification failed: ${e.javaClass.simpleName}", e)
-                Log.e("PhoneLoginScreen", "   Error code: ${e.errorCode}")
                 Log.e("PhoneLoginScreen", "   Error message: ${e.message}")
                 Log.e("PhoneLoginScreen", "   User message: $errorMsg")
             }

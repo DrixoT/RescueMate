@@ -5,6 +5,9 @@
     <!-- Google Maps API Key - Loaded from .env via BuildConfig -->
     <string name="google_maps_api_key">Loaded from BuildConfig</string>
 
+    <!-- Google Sign-In Web Client ID (from Firebase Console) -->
+    <string name="default_web_client_id">1085665199694-urhu4004f6lq8bb1hgha5vbqh06ubssp.apps.googleusercontent.com</string>
+
     <!-- Navigation -->
     <string name="back">Back</string>
     <string name="next">Next</string>

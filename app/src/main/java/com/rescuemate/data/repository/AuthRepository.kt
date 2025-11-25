@@ -13,10 +13,9 @@ import com.google.firebase.auth.AuthCredential
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.auth.GoogleAuthProvider
+import com.rescuemate.R
 import com.rescuemate.data.UserPreferences
 import kotlinx.coroutines.tasks.await
-import org.json.JSONObject
-import java.io.InputStream
 
 import android.app.Activity
 import com.google.firebase.auth.PhoneAuthCredential
@@ -30,104 +29,35 @@ class AuthRepository(private val context: Context) {
     private val googleSignInClient: GoogleSignInClient
 
     init {
-        // Try to get web client ID from google-services.json
-        val webClientId = getWebClientIdFromGoogleServices()
-        
-        val gsoBuilder = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
+        // Get Web Client ID from auto-generated resources (recommended approach)
+        // The Google Services plugin automatically generates R.string.default_web_client_id
+        // from google-services.json during build time
+        val webClientId = try {
+            context.getString(R.string.default_web_client_id)
+        } catch (e: Exception) {
+            // Fallback to hardcoded value if resource not found
+            Log.w("AuthRepository", "⚠️ Could not find default_web_client_id resource, using fallback")
+            "1085665199694-urhu4004f6lq8bb1hgha5vbqh06ubssp.apps.googleusercontent.com"
+        }
+
+        // IMPORTANT: SHA-1 fingerprint verification for developers
+        // The google-services.json contains SHA-1: 06396e57da76d407f5a86936e0dddd4dacf35885
+        // Verify this matches your keystore:
+        // Debug: keytool -list -v -keystore ~/.android/debug.keystore -alias androiddebugkey -storepass android -keypass android
+        // Release: keytool -list -v -keystore your-release-key.keystore -alias your-alias
+        // If SHA-1 doesn't match, add the correct fingerprint in Firebase Console:
+        // Project Settings > Your apps > Android app > SHA certificate fingerprints
+
+        val gso = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
+            .requestIdToken(webClientId)
             .requestEmail()
-        
-        // Only request ID token if we have a web client ID
-        webClientId?.let {
-            gsoBuilder.requestIdToken(it)
-        }
-        
-        googleSignInClient = GoogleSignIn.getClient(context, gsoBuilder.build())
+            .build()
+
+        googleSignInClient = GoogleSignIn.getClient(context, gso)
+        Log.d("AuthRepository", "✅ Google Sign-In client initialized")
     }
     
-    private fun getWebClientIdFromGoogleServices(): String? {
-        // Try multiple methods to read the Web Client ID
-        
-        // Method 1: Try reading from assets (if file was manually added to assets)
-        try {
-            val inputStream: InputStream = context.assets.open("google-services.json")
-            val jsonString = inputStream.bufferedReader().use { it.readText() }
-            val json = JSONObject(jsonString)
-            
-            val clientArray = json.getJSONArray("client")
-            if (clientArray.length() > 0) {
-                val client = clientArray.getJSONObject(0)
-                val oauthClients = client.optJSONArray("oauth_client")
-                
-                if (oauthClients != null && oauthClients.length() > 0) {
-                    // Find web client (client_type: 3)
-                    for (i in 0 until oauthClients.length()) {
-                        val oauthClient = oauthClients.getJSONObject(i)
-                        if (oauthClient.optInt("client_type") == 3) {
-                            val clientId = oauthClient.getString("client_id")
-                            Log.d("AuthRepository", "Found Web Client ID from assets: ${clientId.take(20)}...")
-                            return clientId
-                        }
-                    }
-                }
-            }
-        } catch (e: Exception) {
-            Log.d("AuthRepository", "Could not read from assets, trying file system...", e)
-        }
-        
-        // Method 2: Try reading from the app directory (google-services.json location)
-        try {
-            val file = java.io.File(context.filesDir.parent, "google-services.json")
-            if (!file.exists()) {
-                // Try alternative path
-                val altFile = java.io.File(context.applicationInfo.dataDir, "google-services.json")
-                if (altFile.exists()) {
-                    val jsonString = altFile.readText()
-                    val json = JSONObject(jsonString)
-                    return extractWebClientId(json)
-                }
-            } else {
-                val jsonString = file.readText()
-                val json = JSONObject(jsonString)
-                return extractWebClientId(json)
-            }
-        } catch (e: Exception) {
-            Log.d("AuthRepository", "Could not read from file system", e)
-        }
-        
-        // Method 3: Fallback to hardcoded value from the actual google-services.json
-        // This is the Web Client ID from the project's google-services.json file
-        val fallbackClientId = "1085665199694-urhu4004f6lq8bb1hgha5vbqh06ubssp.apps.googleusercontent.com"
-        Log.w("AuthRepository", "⚠️ Using fallback Web Client ID")
-        Log.w("AuthRepository", "   This may cause Google Sign-In to fail if the fallback doesn't match your Firebase project")
-        Log.w("AuthRepository", "   Fallback ID: ${fallbackClientId.take(30)}...")
-        Log.w("AuthRepository", "   To fix: Ensure google-services.json is in app/ directory with correct Web Client ID")
-        Log.w("AuthRepository", "   Expected location: app/google-services.json")
-        return fallbackClientId
-    }
     
-    private fun extractWebClientId(json: JSONObject): String? {
-        try {
-            val clientArray = json.getJSONArray("client")
-            if (clientArray.length() > 0) {
-                val client = clientArray.getJSONObject(0)
-                val oauthClients = client.optJSONArray("oauth_client")
-                
-                if (oauthClients != null && oauthClients.length() > 0) {
-                    for (i in 0 until oauthClients.length()) {
-                        val oauthClient = oauthClients.getJSONObject(i)
-                        if (oauthClient.optInt("client_type") == 3) {
-                            val clientId = oauthClient.getString("client_id")
-                            Log.d("AuthRepository", "Extracted Web Client ID: ${clientId.take(20)}...")
-                            return clientId
-                        }
-                    }
-                }
-            }
-        } catch (e: Exception) {
-            Log.w("AuthRepository", "Error extracting Web Client ID", e)
-        }
-        return null
-    }
 
     // ============================================
     // EMAIL AUTHENTICATION
@@ -191,56 +121,45 @@ class AuthRepository(private val context: Context) {
     // ============================================
 
     fun getGoogleSignInIntent(): Intent {
-        // Check if we have a valid configuration
-        if (getWebClientIdFromGoogleServices() == null) {
-            Log.e("AuthRepository", "⚠️ MISSING WEB CLIENT ID in google-services.json! Google Sign-In will fail.")
-        }
         return googleSignInClient.signInIntent
     }
 
     suspend fun signInWithGoogle(intent: Intent): Result<FirebaseUser> {
-        // First check if we have the necessary configuration
-        if (getWebClientIdFromGoogleServices() == null) {
-            val errorMsg = "Configuration Error: Missing Web Client ID in google-services.json. Please update your Firebase configuration."
-            Log.e("AuthRepository", errorMsg)
-            return Result.failure(Exception(errorMsg))
-        }
-
         return try {
             Log.d("AuthRepository", "🔄 Starting Google Sign-In authentication...")
             val task = GoogleSignIn.getSignedInAccountFromIntent(intent)
             val account = task.getResult(ApiException::class.java)
-            
-            val idToken = account.idToken ?: throw Exception("Google ID Token is null - Check Web Client ID configuration")
+
+            val idToken = account.idToken ?: throw Exception("Authentication configuration error")
             Log.d("AuthRepository", "✅ Google account retrieved, ID token present")
-            
+
             val credential = GoogleAuthProvider.getCredential(idToken, null)
             val authResult = auth.signInWithCredential(credential).await()
             val user = authResult.user ?: throw Exception("Firebase User is null")
-            
+
             Log.d("AuthRepository", "✅ Firebase authentication successful for user: ${user.uid}")
-            
+
             // Update local preferences
             updateLocalUser(user)
-            
+
             Result.success(user)
         } catch (e: ApiException) {
             // Handle ApiException specifically to extract status code
             val statusCode = e.statusCode
             val errorMessage = when (statusCode) {
-                10 -> "Configuration error: Wrong Web Client ID or SHA-1 certificate fingerprint. Please verify your Firebase configuration."
+                10 -> "Please reinstall the app or contact support"
                 8 -> "Google Sign-In service error. Please try again."
                 7 -> "Network error. Please check your internet connection."
-                12500 -> "Sign-in was cancelled"
+                12500 -> "Sign-in cancelled"
                 12501 -> "Another sign-in is already in progress"
                 else -> "Google Sign-In failed with error code: $statusCode"
             }
-            
+
             Log.e("AuthRepository", "❌ Google Sign-In ApiException")
             Log.e("AuthRepository", "   Status Code: $statusCode")
             Log.e("AuthRepository", "   Error Message: ${e.message}")
             Log.e("AuthRepository", "   Full Exception:", e)
-            
+
             Result.failure(Exception("$errorMessage (Code: $statusCode)"))
         } catch (e: Exception) {
             Log.e("AuthRepository", "❌ Google Sign-In failed: ${e.javaClass.simpleName}", e)
