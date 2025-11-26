@@ -39,7 +39,7 @@ fun RescueMateNavigation(
         val isOnboardingComplete = userPrefs.isOnboardingComplete()
         
         android.util.Log.d("RescueMateNavigation", "════════════════════════════════════════")
-        android.util.Log.d("RescueMateNavigation", "🧭 Determining navigation start destination")
+        android.util.Log.d("RescueMateNavigation", "Determining navigation start destination")
         android.util.Log.d("RescueMateNavigation", "   isLoggedIn: $isLoggedIn")
         android.util.Log.d("RescueMateNavigation", "   isSetupComplete: $isSetupComplete")
         android.util.Log.d("RescueMateNavigation", "   isOnboardingComplete: $isOnboardingComplete")
@@ -47,26 +47,26 @@ fun RescueMateNavigation(
         val destination = when {
             // If user is logged in AND setup is complete, go to home
             isLoggedIn && isSetupComplete -> {
-                android.util.Log.d("RescueMateNavigation", "✅ User authenticated and setup complete -> Home")
+                android.util.Log.d("RescueMateNavigation", "User authenticated and setup complete -> Home")
                 Screen.Home.route
             }
             // If onboarding is complete (regardless of login status), go to sign in
             isOnboardingComplete -> {
-                android.util.Log.d("RescueMateNavigation", "✅ Onboarding complete -> SignIn")
+                android.util.Log.d("RescueMateNavigation", "Onboarding complete -> SignIn")
                 Screen.SignIn.route
             }
             // Otherwise, show onboarding
             else -> {
-                android.util.Log.d("RescueMateNavigation", "✅ New user -> Onboarding")
+                android.util.Log.d("RescueMateNavigation", "New user -> Onboarding")
                 Screen.Onboarding.route
             }
         }
         
-        android.util.Log.d("RescueMateNavigation", "🎯 Starting at: $destination")
+        android.util.Log.d("RescueMateNavigation", "Starting at: $destination")
         android.util.Log.d("RescueMateNavigation", "════════════════════════════════════════")
         destination
     } catch (e: Exception) {
-        android.util.Log.e("RescueMateNavigation", "❌ Error determining start destination, defaulting to Onboarding", e)
+        android.util.Log.e("RescueMateNavigation", "Error determining start destination, defaulting to Onboarding", e)
         Screen.Onboarding.route
     }
     
@@ -88,7 +88,7 @@ fun RescueMateNavigation(
             SignInScreen(
                 onSignIn = {
                     try {
-                        android.util.Log.d("RescueMateNavigation", "🧭 SignIn successful, determining next screen...")
+                        android.util.Log.d("RescueMateNavigation", "SignIn successful, determining next screen...")
                         val isSetupComplete = userPrefs.isSetupComplete()
                         val target = if (isSetupComplete) {
                             android.util.Log.d("RescueMateNavigation", "   Setup complete -> Home")
@@ -102,7 +102,7 @@ fun RescueMateNavigation(
                             popUpTo(Screen.SignIn.route) { inclusive = true }
                         }
                     } catch (e: Exception) {
-                        android.util.Log.e("RescueMateNavigation", "❌ Navigation error after SignIn, defaulting to SetupWizard", e)
+                        android.util.Log.e("RescueMateNavigation", "Navigation error after SignIn, defaulting to SetupWizard", e)
                         navController.navigate(Screen.SetupWizard.route) {
                             popUpTo(Screen.SignIn.route) { inclusive = true }
                         }
@@ -126,7 +126,7 @@ fun RescueMateNavigation(
                     try {
                         navController.popBackStack()
                     } catch (e: Exception) {
-                        android.util.Log.e("RescueMateNavigation", "❌ Error navigating back from PhoneLogin", e)
+                        android.util.Log.e("RescueMateNavigation", "Error navigating back from PhoneLogin", e)
                         navController.navigate(Screen.SignIn.route) {
                             popUpTo(Screen.PhoneLogin.route) { inclusive = true }
                         }
@@ -134,7 +134,7 @@ fun RescueMateNavigation(
                 },
                 onLoginSuccess = {
                     try {
-                        android.util.Log.d("RescueMateNavigation", "🧭 Phone login successful, determining next screen...")
+                        android.util.Log.d("RescueMateNavigation", "Phone login successful, determining next screen...")
                         val isSetupComplete = userPrefs.isSetupComplete()
                         val target = if (isSetupComplete) {
                             android.util.Log.d("RescueMateNavigation", "   Setup complete -> Home")
@@ -148,7 +148,7 @@ fun RescueMateNavigation(
                             popUpTo(Screen.PhoneLogin.route) { inclusive = true }
                         }
                     } catch (e: Exception) {
-                        android.util.Log.e("RescueMateNavigation", "❌ Navigation error after PhoneLogin, defaulting to SetupWizard", e)
+                        android.util.Log.e("RescueMateNavigation", "Navigation error after PhoneLogin, defaulting to SetupWizard", e)
                         navController.navigate(Screen.SetupWizard.route) {
                             popUpTo(Screen.PhoneLogin.route) { inclusive = true }
                         }
@@ -244,7 +244,7 @@ fun RescueMateNavigation(
                     try {
                         navController.popBackStack()
                     } catch (e: Exception) {
-                        android.util.Log.e("RescueMateNavigation", "❌ Error navigating back from EmailLogin", e)
+                        android.util.Log.e("RescueMateNavigation", "Error navigating back from EmailLogin", e)
                         navController.navigate(Screen.SignIn.route) {
                             popUpTo(Screen.EmailLogin.route) { inclusive = true }
                         }
@@ -252,7 +252,7 @@ fun RescueMateNavigation(
                 },
                 onLogin = {
                     try {
-                        android.util.Log.d("RescueMateNavigation", "🧭 Email login successful, determining next screen...")
+                        android.util.Log.d("RescueMateNavigation", "Email login successful, determining next screen...")
                         val isSetupComplete = userPrefs.isSetupComplete()
                         val target = if (isSetupComplete) {
                             android.util.Log.d("RescueMateNavigation", "   Setup complete -> Home")
@@ -266,7 +266,7 @@ fun RescueMateNavigation(
                             popUpTo(Screen.EmailLogin.route) { inclusive = true }
                         }
                     } catch (e: Exception) {
-                        android.util.Log.e("RescueMateNavigation", "❌ Navigation error after EmailLogin, defaulting to SetupWizard", e)
+                        android.util.Log.e("RescueMateNavigation", "Navigation error after EmailLogin, defaulting to SetupWizard", e)
                         navController.navigate(Screen.SetupWizard.route) {
                             popUpTo(Screen.EmailLogin.route) { inclusive = true }
                         }
@@ -301,19 +301,19 @@ fun RescueMateNavigation(
             SetupWizardScreen(
                 onComplete = {
                     try {
-                        android.util.Log.d("RescueMateNavigation", "🧭 Setup wizard completed, navigating to Home...")
+                        android.util.Log.d("RescueMateNavigation", "Setup wizard completed, navigating to Home...")
                         navController.navigate(Screen.Home.route) {
                             popUpTo(Screen.SetupWizard.route) { inclusive = true }
                         }
                     } catch (e: Exception) {
-                        android.util.Log.e("RescueMateNavigation", "❌ Navigation error after SetupWizard", e)
+                        android.util.Log.e("RescueMateNavigation", "Navigation error after SetupWizard", e)
                         // Ensure we still navigate even if there's an error
                         try {
                             navController.navigate(Screen.Home.route) {
                                 popUpTo(0) { inclusive = true }
                             }
                         } catch (e2: Exception) {
-                            android.util.Log.e("RescueMateNavigation", "❌ Critical: Cannot navigate to Home", e2)
+                            android.util.Log.e("RescueMateNavigation", "Critical: Cannot navigate to Home", e2)
                         }
                     }
                 }

@@ -42,10 +42,10 @@
 
 **Expected Results:**
 - [ ] Loading indicator appears
-- [ ] Console logs show: "🚀 Starting Firebase account creation..."
-- [ ] Console logs show: "✅ Firebase account created successfully"
-- [ ] Console logs show: "💾 Saving user profile to SharedPreferences"
-- [ ] Console logs show: "✅ ALL DATA SAVED SUCCESSFULLY"
+- [ ] Console logs show: "Starting Firebase account creation..."
+- [ ] Console logs show: "Firebase account created successfully"
+- [ ] Console logs show: "Saving user profile to SharedPreferences"
+- [ ] Console logs show: "ALL DATA SAVED SUCCESSFULLY"
 - [ ] Toast message: "Registration complete!"
 - [ ] Navigates to Setup Wizard automatically
 - [ ] No crashes occur
@@ -66,11 +66,11 @@
 
 **Expected Results:**
 - [ ] Each step validates before allowing "Next"
-- [ ] Console logs show: "🚀 Starting setup wizard completion"
-- [ ] Console logs show: "💾 Saving user profile locally..."
-- [ ] Console logs show: "✅ User profile saved locally"
-- [ ] Console logs show: "☁️ Syncing to Firestore..."
-- [ ] Console logs show: "✅ Setup wizard completed successfully"
+- [ ] Console logs show: "Starting setup wizard completion"
+- [ ] Console logs show: "Saving user profile locally..."
+- [ ] Console logs show: "User profile saved locally"
+- [ ] Console logs show: "Syncing to Firestore..."
+- [ ] Console logs show: "Setup wizard completed successfully"
 - [ ] Navigates to Home Dashboard
 - [ ] No crashes if Firestore sync fails (shows: "Profile saved locally. Cloud sync will retry later.")
 
@@ -102,8 +102,8 @@ Test each invalid input:
 
 **Expected Results:**
 - [ ] Google Sign-In picker appears
-- [ ] Console logs show: "📡 Calling Firebase signInWithGoogle..."
-- [ ] Console logs show: "✅ Google Sign-In successful"
+- [ ] Console logs show: "Calling Firebase signInWithGoogle..."
+- [ ] Console logs show: "Google Sign-In successful"
 - [ ] Console logs show: "Login state after Google auth: true"
 - [ ] Toast: "Welcome back!"
 - [ ] Navigates to Setup Wizard (first time) or Home (returning user)
@@ -120,10 +120,10 @@ Test each invalid input:
 
 **Expected Results:**
 - [ ] Toast appears: "Apple Sign-In (Demo Mode)"
-- [ ] Console logs show: "🍎 Apple Sign-In clicked (Mock)"
-- [ ] Console logs show: "🔄 Starting mock sign-in for: apple_user@rescuemate.com"
-- [ ] Console logs show: "✅ Mock credentials saved"
-- [ ] Console logs show: "✅ Mock sign-in successful, navigating..."
+- [ ] Console logs show: "Apple Sign-In clicked (Mock)"
+- [ ] Console logs show: "Starting mock sign-in for: apple_user@rescuemate.com"
+- [ ] Console logs show: "Mock credentials saved"
+- [ ] Console logs show: "Mock sign-in successful, navigating..."
 - [ ] Navigates to Setup Wizard or Home
 - [ ] No crashes occur
 
@@ -167,9 +167,9 @@ Test each invalid input:
 2. Launch app
 
 **Expected Results:**
-- [ ] Console logs show: "🧭 Determining navigation start destination"
+- [ ] Console logs show: "Determining navigation start destination"
 - [ ] Console logs show all user state flags (isLoggedIn, isSetupComplete, isOnboardingComplete)
-- [ ] Console logs show: "🎯 Starting at: [correct route]"
+- [ ] Console logs show: "Starting at: [correct route]"
 - [ ] Starts at correct screen based on user state:
   - New user → Onboarding
   - Onboarding complete → Sign In
@@ -183,9 +183,9 @@ Test each invalid input:
 
 **Expected Results:**
 - [ ] After sign-up → Setup Wizard
-- [ ] Console logs show: "🧭 Navigating to Setup Wizard"
+- [ ] Console logs show: "Navigating to Setup Wizard"
 - [ ] After setup complete → Home Dashboard
-- [ ] Console logs show: "🧭 Setup wizard completed, navigating to Home..."
+- [ ] Console logs show: "Setup wizard completed, navigating to Home..."
 
 ### 3.3 Navigation Error Recovery
 **Test Steps:**
@@ -196,7 +196,7 @@ Simulate navigation errors by:
 **Expected Results:**
 - [ ] App doesn't crash
 - [ ] Fallback routes are used
-- [ ] Console logs show: "❌ Navigation error... defaulting to [fallback]"
+- [ ] Console logs show: "Navigation error... defaulting to [fallback]"
 - [ ] User can still proceed
 
 ### 3.4 Back Navigation
@@ -236,8 +236,8 @@ Test back button on each screen:
 2. Verify no crashes from database parsing
 
 **Expected Results:**
-- [ ] Database operations log: "📖 Parsing emergency event from database cursor..."
-- [ ] If parsing fails, logs show: "⚠️ Returning fallback emergency event to prevent crash"
+- [ ] Database operations log: "Parsing emergency event from database cursor..."
+- [ ] If parsing fails, logs show: "Returning fallback emergency event to prevent crash"
 - [ ] App continues functioning even with corrupted data
 - [ ] No crashes from database operations
 
@@ -337,41 +337,41 @@ Test back button on each screen:
 **Sign-Up Flow:**
 ```
 SignUpScreen: ════════════════════════════════════════
-SignUpScreen: 📝 Starting account creation process
-SignUpScreen: ✅ All validations passed
-SignUpScreen: 🚀 Starting Firebase account creation...
-SignUpScreen: ✅ Firebase account created successfully
-SignUpScreen: ✅ ALL DATA SAVED SUCCESSFULLY
-SignUpScreen: 🎯 Navigating to Setup Wizard
+SignUpScreen: Starting account creation process
+SignUpScreen: All validations passed
+SignUpScreen: Starting Firebase account creation...
+SignUpScreen: Firebase account created successfully
+SignUpScreen: ALL DATA SAVED SUCCESSFULLY
+SignUpScreen: Navigating to Setup Wizard
 ```
 
 **Setup Wizard:**
 ```
 SetupWizardScreen: ════════════════════════════════════════
-SetupWizardScreen: 🚀 Starting setup wizard completion
-SetupWizardScreen: ✅ User profile saved locally
-SetupWizardScreen: ☁️ Syncing to Firestore...
-SetupWizardScreen: ✅ Setup wizard completed successfully
+SetupWizardScreen: Starting setup wizard completion
+SetupWizardScreen: User profile saved locally
+SetupWizardScreen: Syncing to Firestore...
+SetupWizardScreen: Setup wizard completed successfully
 ```
 
 **Navigation:**
 ```
 RescueMateNavigation: ════════════════════════════════════════
-RescueMateNavigation: 🧭 Determining navigation start destination
-RescueMateNavigation: 🎯 Starting at: [route]
+RescueMateNavigation: Determining navigation start destination
+RescueMateNavigation: Starting at: [route]
 ```
 
 **Database Operations:**
 ```
-EmergencyDatabaseHelper: 📖 Parsing emergency event from database cursor...
-EmergencyDatabaseHelper: ✅ Successfully parsed emergency event: [id]
+EmergencyDatabaseHelper: Parsing emergency event from database cursor...
+EmergencyDatabaseHelper: Successfully parsed emergency event: [id]
 ```
 
 ### 7.2 Error Logging Check
 **Verify error logs appear for failures:**
 ```
-[TAG]: ❌ [Error description]
-[TAG]: ❌❌❌ CRITICAL: [Critical error]
+[TAG]: [Error description]
+[TAG]: CRITICAL: [Critical error]
 [TAG]:    Exception type: [exception class]
 [TAG]:    Exception message: [message]
 ```
@@ -457,12 +457,12 @@ For rapid verification after changes:
 ## Notes for Developers
 
 ### Key Improvements Made
-1. ✅ Comprehensive logging throughout authentication flow
-2. ✅ Null safety checks in all critical paths
-3. ✅ Database parsing with fallback for corrupted data
-4. ✅ Navigation error handling with fallback routes
-5. ✅ User-friendly error messages
-6. ✅ Apple Sign-In mock properly implemented
+1. Comprehensive logging throughout authentication flow
+2. Null safety checks in all critical paths
+3. Database parsing with fallback for corrupted data
+4. Navigation error handling with fallback routes
+5. User-friendly error messages
+6. Apple Sign-In mock properly implemented
 
 ### Known Limitations
 - Apple Sign-In is mock implementation (not fully integrated)

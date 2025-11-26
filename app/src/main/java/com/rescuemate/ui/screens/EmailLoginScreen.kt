@@ -52,32 +52,32 @@ fun EmailLoginScreen(
     val focusManager = LocalFocusManager.current
     val scope = rememberCoroutineScope()
 
-    Log.d("EmailLoginScreen", "🎨 Screen rendered")
+    Log.d("EmailLoginScreen", "Screen rendered")
 
     // Login function
     fun performLogin() {
-        Log.d("EmailLoginScreen", "🔐 SIGN IN CLICKED - Starting validation")
-        Log.d("EmailLoginScreen", "📝 Email: '$email'")
+        Log.d("EmailLoginScreen", "SIGN IN CLICKED - Starting validation")
+        Log.d("EmailLoginScreen", "Email: '$email'")
 
         // Validate email
         val emailValidation = repository.validateEmail(email)
         if (!emailValidation.isValid) {
-            Log.w("EmailLoginScreen", "❌ Email validation failed: ${emailValidation.message}")
+            Log.w("EmailLoginScreen", "Email validation failed: ${emailValidation.message}")
             errorMessage = emailValidation.message
-            Toast.makeText(context, "❌ ${emailValidation.message}", Toast.LENGTH_LONG).show()
+            Toast.makeText(context, "${emailValidation.message}", Toast.LENGTH_LONG).show()
             return
         }
 
         // Validate password
         val passwordValidation = repository.validatePassword(password)
         if (!passwordValidation.isValid) {
-            Log.w("EmailLoginScreen", "❌ Password validation failed: ${passwordValidation.message}")
+            Log.w("EmailLoginScreen", "Password validation failed: ${passwordValidation.message}")
             errorMessage = passwordValidation.message
-            Toast.makeText(context, "❌ ${passwordValidation.message}", Toast.LENGTH_LONG).show()
+            Toast.makeText(context, "${passwordValidation.message}", Toast.LENGTH_LONG).show()
             return
         }
 
-        Log.d("EmailLoginScreen", "✅ Validation passed - Processing login")
+        Log.d("EmailLoginScreen", "Validation passed - Processing login")
 
         isLoading = true
         errorMessage = null
@@ -87,14 +87,14 @@ fun EmailLoginScreen(
                 val result = authRepo.signInWithEmail(email.trim(), password)
                 
                 if (result.isSuccess) {
-                    Log.d("EmailLoginScreen", "✅ Firebase sign-in successful")
+                    Log.d("EmailLoginScreen", "Firebase sign-in successful")
                     
                     // Explicitly mark onboarding as complete
                     try {
                         userPrefs.setOnboardingComplete(true)
-                        Log.d("EmailLoginScreen", "✅ Onboarding marked complete")
+                        Log.d("EmailLoginScreen", "Onboarding marked complete")
                     } catch (e: Exception) {
-                        Log.e("EmailLoginScreen", "❌ Error setting onboarding complete", e)
+                        Log.e("EmailLoginScreen", "Error setting onboarding complete", e)
                     }
                     
                     // Verify login state
@@ -102,15 +102,15 @@ fun EmailLoginScreen(
                     Log.d("EmailLoginScreen", "Login state verified: $isLoggedIn")
                     
                     if (!isLoggedIn) {
-                        Log.e("EmailLoginScreen", "❌ Login state not properly saved!")
+                        Log.e("EmailLoginScreen", "Login state not properly saved!")
                         errorMessage = "Authentication error - please try again"
                         Toast.makeText(context, errorMessage, Toast.LENGTH_LONG).show()
                         return@launch
                     }
                     
-                    Toast.makeText(context, "✅ Logged in successfully", Toast.LENGTH_SHORT).show()
-                    Log.d("EmailLoginScreen", "✅ LOGIN SUCCESSFUL")
-                    Log.d("EmailLoginScreen", "🧭 Navigating to home screen")
+                    Toast.makeText(context, "Logged in successfully", Toast.LENGTH_SHORT).show()
+                    Log.d("EmailLoginScreen", "LOGIN SUCCESSFUL")
+                    Log.d("EmailLoginScreen", "Navigating to home screen")
                     
                     // Use onLogin callback to navigate
                     onLogin()
@@ -141,12 +141,12 @@ fun EmailLoginScreen(
                         }
                     }
                     
-                    Log.e("EmailLoginScreen", "❌ Login error: $errorMsg", exception)
+                    Log.e("EmailLoginScreen", "Login error: $errorMsg", exception)
                     errorMessage = errorMsg
                     Toast.makeText(context, errorMsg, Toast.LENGTH_LONG).show()
                 }
             } catch (e: Exception) {
-                Log.e("EmailLoginScreen", "❌ Critical error during login", e)
+                Log.e("EmailLoginScreen", "Critical error during login", e)
                 val errorMsg = when {
                     e.message?.contains("network", ignoreCase = true) == true ->
                         "Network error. Please check your connection."
@@ -156,7 +156,7 @@ fun EmailLoginScreen(
                 Toast.makeText(context, errorMsg, Toast.LENGTH_LONG).show()
             } finally {
                 isLoading = false
-                Log.d("EmailLoginScreen", "🏁 Login flow completed")
+                Log.d("EmailLoginScreen", "Login flow completed")
             }
         }
     }
@@ -249,7 +249,7 @@ fun EmailLoginScreen(
                     onValueChange = {
                         email = it
                         errorMessage = null
-                        Log.d("EmailLoginScreen", "📝 Email input: '$it'")
+                        Log.d("EmailLoginScreen", "Email input: '$it'")
                     },
                     label = { Text("Email") },
                     placeholder = { Text("your.email@example.com") },
@@ -289,7 +289,7 @@ fun EmailLoginScreen(
                     onValueChange = {
                         password = it
                         errorMessage = null
-                        Log.d("EmailLoginScreen", "📝 Password input changed (length: ${it.length})")
+                        Log.d("EmailLoginScreen", "Password input changed (length: ${it.length})")
                     },
                     label = { Text("Password") },
                     placeholder = { Text("Enter your password") },

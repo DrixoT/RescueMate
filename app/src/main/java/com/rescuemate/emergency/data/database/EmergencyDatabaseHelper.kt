@@ -600,7 +600,7 @@ class EmergencyDatabaseHelper(context: Context) : SQLiteOpenHelper(
             val healthData = try {
                 deserializeHealthData(healthDataJson)
             } catch (e: Exception) {
-                Log.w(TAG, "   ⚠️ Failed to parse health data, using defaults", e)
+                Log.w(TAG, "   Failed to parse health data, using defaults", e)
                 HealthData(currentHeartRate = 0, normalHeartRate = 70, alertReason = "Parse error")
             }
             
@@ -609,18 +609,18 @@ class EmergencyDatabaseHelper(context: Context) : SQLiteOpenHelper(
             val locationData = try {
                 deserializeLocationData(locationDataJson)
             } catch (e: Exception) {
-                Log.w(TAG, "   ⚠️ Failed to parse location data, using defaults", e)
+                Log.w(TAG, "   Failed to parse location data, using defaults", e)
                 LocationData(latitude = 0.0, longitude = 0.0, accuracy = 0f, address = "Unknown")
             }
             
             // Get user medical info with error handling
             val medicalInfo = try {
                 getMedicalInfo(userId).getOrNull() ?: run {
-                    Log.d(TAG, "   ℹ️ No medical info found for user, creating default")
+                    Log.d(TAG, "   No medical info found for user, creating default")
                     MedicalInfo(userId = userId)
                 }
             } catch (e: Exception) {
-                Log.w(TAG, "   ⚠️ Error retrieving medical info, using default", e)
+                Log.w(TAG, "   Error retrieving medical info, using default", e)
                 MedicalInfo(userId = userId)
             }
             
@@ -628,7 +628,7 @@ class EmergencyDatabaseHelper(context: Context) : SQLiteOpenHelper(
             val contacts = try {
                 getAllContacts().getOrNull() ?: emptyList()
             } catch (e: Exception) {
-                Log.w(TAG, "   ⚠️ Error retrieving contacts, using empty list", e)
+                Log.w(TAG, "   Error retrieving contacts, using empty list", e)
                 emptyList()
             }
             
@@ -656,7 +656,7 @@ class EmergencyDatabaseHelper(context: Context) : SQLiteOpenHelper(
                     cursor.getString(cursor.getColumnIndexOrThrow(COL_EVENT_TYPE))
                 )
             } catch (e: Exception) {
-                Log.w(TAG, "   ⚠️ Invalid emergency type, using MANUAL_TRIGGER", e)
+                Log.w(TAG, "   Invalid emergency type, using MANUAL_TRIGGER", e)
                 EmergencyConstants.EmergencyType.MANUAL_TRIGGER
             }
             
@@ -665,7 +665,7 @@ class EmergencyDatabaseHelper(context: Context) : SQLiteOpenHelper(
                     cursor.getString(cursor.getColumnIndexOrThrow(COL_EVENT_STATUS))
                 )
             } catch (e: Exception) {
-                Log.w(TAG, "   ⚠️ Invalid status, using INITIATED", e)
+                Log.w(TAG, "   Invalid status, using INITIATED", e)
                 EmergencyConstants.EmergencyStatus.INITIATED
             }
             
@@ -687,11 +687,11 @@ class EmergencyDatabaseHelper(context: Context) : SQLiteOpenHelper(
                 twilioCallSid = cursor.getStringOrNull(cursor.getColumnIndexOrThrow(COL_EVENT_TWILIO_SID))
             )
             
-            Log.d(TAG, "✅ Successfully parsed emergency event: ${event.id}")
+            Log.d(TAG, "Successfully parsed emergency event: ${event.id}")
             return event
             
         } catch (e: Exception) {
-            Log.e(TAG, "❌ CRITICAL: Failed to parse emergency event from cursor", e)
+            Log.e(TAG, "CRITICAL: Failed to parse emergency event from cursor", e)
             Log.e(TAG, "   Exception type: ${e.javaClass.simpleName}")
             Log.e(TAG, "   Exception message: ${e.message}")
             
@@ -709,7 +709,7 @@ class EmergencyDatabaseHelper(context: Context) : SQLiteOpenHelper(
                 "unknown_user"
             }
             
-            Log.w(TAG, "⚠️ Returning fallback emergency event to prevent crash")
+            Log.w(TAG, "Returning fallback emergency event to prevent crash")
             return EmergencyEvent(
                 id = fallbackId,
                 userId = fallbackUserId,

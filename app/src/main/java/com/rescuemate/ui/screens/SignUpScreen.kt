@@ -72,7 +72,7 @@ fun SignUpScreen(
         }
     }
 
-    Log.d("SignUpScreen", "🎨 Screen rendered")
+    Log.d("SignUpScreen", "Screen rendered")
 
     // Function to save user profile
     fun saveUserProfile() {
@@ -136,16 +136,16 @@ fun SignUpScreen(
 
         scope.launch {
             try {
-                Log.d("SignUpScreen", "🔄 Starting Firebase account creation for: ${email.trim()}")
+                Log.d("SignUpScreen", "Starting Firebase account creation for: ${email.trim()}")
                 
                 // Create account with Firebase
                 val signUpResult = authRepo.signUpWithEmail(email.trim(), password)
                 
                 if (signUpResult.isSuccess) {
-                    Log.d("SignUpScreen", "✅ Firebase account created successfully")
+                    Log.d("SignUpScreen", "Firebase account created successfully")
                     
                     // Save user profile to SharedPreferences
-                    Log.d("SignUpScreen", "💾 Saving user profile to SharedPreferences")
+                    Log.d("SignUpScreen", "Saving user profile to SharedPreferences")
                     try {
                         userPrefs.saveUserProfile(
                             name = name.trim(),
@@ -153,31 +153,31 @@ fun SignUpScreen(
                             gender = gender,
                             phone = phone.trim()
                         )
-                        Log.d("SignUpScreen", "✅ User profile saved: $name, age $calculatedAge, gender $gender")
+                        Log.d("SignUpScreen", "User profile saved: $name, age $calculatedAge, gender $gender")
                     } catch (e: Exception) {
-                        Log.e("SignUpScreen", "❌ Error saving user profile", e)
+                        Log.e("SignUpScreen", "Error saving user profile", e)
                         throw Exception("Failed to save user profile: ${e.message}")
                     }
                     
                     try {
                         userPrefs.saveDateOfBirth(dateOfBirth.trim())
-                        Log.d("SignUpScreen", "✅ Date of birth saved")
+                        Log.d("SignUpScreen", "Date of birth saved")
                     } catch (e: Exception) {
-                        Log.e("SignUpScreen", "❌ Error saving date of birth", e)
+                        Log.e("SignUpScreen", "Error saving date of birth", e)
                         throw Exception("Failed to save date of birth: ${e.message}")
                     }
                     
                     // Save medical information
                     try {
-                        Log.d("SignUpScreen", "💾 Saving medical information")
+                        Log.d("SignUpScreen", "Saving medical information")
                         userPrefs.saveMedicalInfo(
                             medicalHistory = medicalHistory.trim(),
                             currentMedication = currentMedication.trim(),
                             allergies = allergies.trim()
                         )
-                        Log.d("SignUpScreen", "✅ Medical info saved")
+                        Log.d("SignUpScreen", "Medical info saved")
                     } catch (e: Exception) {
-                        Log.e("SignUpScreen", "❌ Error saving medical info", e)
+                        Log.e("SignUpScreen", "Error saving medical info", e)
                         // Medical info is optional, don't fail registration
                         Log.w("SignUpScreen", "Continuing without medical info...")
                     }
@@ -185,14 +185,14 @@ fun SignUpScreen(
                     // Mark onboarding as complete
                     try {
                         userPrefs.setOnboardingComplete(true)
-                        Log.d("SignUpScreen", "✅ Onboarding marked as complete")
+                        Log.d("SignUpScreen", "Onboarding marked as complete")
                     } catch (e: Exception) {
-                        Log.e("SignUpScreen", "❌ Error setting onboarding complete", e)
+                        Log.e("SignUpScreen", "Error setting onboarding complete", e)
                         throw Exception("Failed to set onboarding status: ${e.message}")
                     }
 
-                    Log.d("SignUpScreen", "✅ ALL DATA SAVED SUCCESSFULLY")
-                    Log.d("SignUpScreen", "🧭 Navigating to Setup Wizard")
+                    Log.d("SignUpScreen", "ALL DATA SAVED SUCCESSFULLY")
+                    Log.d("SignUpScreen", "Navigating to Setup Wizard")
 
                     Toast.makeText(context, "Registration complete!", Toast.LENGTH_SHORT).show()
 
@@ -212,13 +212,13 @@ fun SignUpScreen(
                         else -> "Registration failed: ${exception?.message ?: "Unknown error"}"
                     }
                     
-                    Log.e("SignUpScreen", "❌ Registration error: $errorMsg", exception)
+                    Log.e("SignUpScreen", "Registration error: $errorMsg", exception)
                     errorMessage = errorMsg
                     Toast.makeText(context, errorMsg, Toast.LENGTH_LONG).show()
                 }
 
             } catch (e: Exception) {
-                Log.e("SignUpScreen", "❌ Critical exception during registration", e)
+                Log.e("SignUpScreen", "Critical exception during registration", e)
                 val errorMsg = when {
                     e.message?.contains("network", ignoreCase = true) == true ->
                         "Network error. Please check your connection and try again."
@@ -230,7 +230,7 @@ fun SignUpScreen(
                 Toast.makeText(context, errorMsg, Toast.LENGTH_LONG).show()
             } finally {
                 isLoading = false
-                Log.d("SignUpScreen", "🏁 Registration flow completed (loading=$isLoading)")
+                Log.d("SignUpScreen", "Registration flow completed (loading=$isLoading)")
             }
         }
     }
@@ -387,7 +387,7 @@ fun SignUpScreen(
                         onValueChange = {
                             name = it
                             errorMessage = null
-                            Log.d("SignUpScreen", "📝 Name input: '$it'")
+                            Log.d("SignUpScreen", "Name input: '$it'")
                         },
                         label = { Text("Full Name *") },
                         modifier = Modifier.fillMaxWidth(),
@@ -462,7 +462,7 @@ fun SignUpScreen(
                                                 gender = option
                                                 expanded = false
                                                 errorMessage = null
-                                                Log.d("SignUpScreen", "📝 Gender selected: '$option'")
+                                                Log.d("SignUpScreen", "Gender selected: '$option'")
                                             }
                                         )
                                     }
@@ -475,7 +475,7 @@ fun SignUpScreen(
                         onValueChange = {
                             phone = it
                             errorMessage = null
-                            Log.d("SignUpScreen", "📝 Phone input: '$it'")
+                            Log.d("SignUpScreen", "Phone input: '$it'")
                         },
                         label = { Text("Phone Number *") },
                         modifier = Modifier.fillMaxWidth(),
@@ -525,7 +525,7 @@ fun SignUpScreen(
                         value = allergies,
                         onValueChange = {
                             allergies = it
-                            Log.d("SignUpScreen", "📝 Allergies input: '${it.take(30)}...'")
+                            Log.d("SignUpScreen", "Allergies input: '${it.take(30)}...'")
                         },
                         label = { Text("Allergies") },
                         modifier = Modifier.fillMaxWidth(),

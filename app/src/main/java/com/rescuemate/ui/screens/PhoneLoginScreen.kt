@@ -67,7 +67,7 @@ fun PhoneLoginScreen(
             return
         }
         
-        Log.d("PhoneLoginScreen", "📱 Sending OTP to: ${normalizedPhone.take(5)}...")
+        Log.d("PhoneLoginScreen", "Sending OTP to: ${normalizedPhone.take(5)}...")
         isLoading = true
         errorMessage = null
         
@@ -75,20 +75,20 @@ fun PhoneLoginScreen(
             override fun onVerificationCompleted(credential: PhoneAuthCredential) {
                 // For test numbers, Firebase auto-verifies
                 isLoading = false
-                Log.d("PhoneLoginScreen", "✅ Phone auto-verification completed")
+                Log.d("PhoneLoginScreen", "Phone auto-verification completed")
                 scope.launch {
                     val result = authRepo.verifyWithCredential(credential)
                     if (result.isSuccess) {
                         isPhoneVerified = true
                         isCodeSent = true
                         userPrefs.saveUserCredentials("phone_${phone}", "PHONE_AUTH_TOKEN")
-                        Log.d("PhoneLoginScreen", "✅ Phone verified automatically")
+                        Log.d("PhoneLoginScreen", "Phone verified automatically")
                         Toast.makeText(context, "Phone verified automatically!", Toast.LENGTH_SHORT).show()
                         onLoginSuccess()
                     } else {
                         val error = result.exceptionOrNull()?.message ?: "Unknown error"
                         errorMessage = "Auto-verification failed: $error"
-                        Log.e("PhoneLoginScreen", "❌ Auto-verification failed: $error")
+                        Log.e("PhoneLoginScreen", "Auto-verification failed: $error")
                     }
                 }
             }
@@ -110,7 +110,7 @@ fun PhoneLoginScreen(
                     else -> "Verification failed: ${e.message ?: "Unknown error"}"
                 }
                 errorMessage = errorMsg
-                Log.e("PhoneLoginScreen", "❌ Phone verification failed: ${e.javaClass.simpleName}", e)
+                Log.e("PhoneLoginScreen", "Phone verification failed: ${e.javaClass.simpleName}", e)
                 Log.e("PhoneLoginScreen", "   Error message: ${e.message}")
                 Log.e("PhoneLoginScreen", "   User message: $errorMsg")
             }
@@ -119,7 +119,7 @@ fun PhoneLoginScreen(
                 verificationId = vId
                 isCodeSent = true
                 isLoading = false
-                Log.d("PhoneLoginScreen", "✅ Verification code sent successfully")
+                Log.d("PhoneLoginScreen", "Verification code sent successfully")
                 Toast.makeText(context, "Code sent! Check your messages.", Toast.LENGTH_SHORT).show()
             }
         }
@@ -133,7 +133,7 @@ fun PhoneLoginScreen(
             return
         }
         
-        Log.d("PhoneLoginScreen", "🔐 Verifying OTP code...")
+        Log.d("PhoneLoginScreen", "Verifying OTP code...")
         isLoading = true
         errorMessage = null
         scope.launch {
@@ -142,7 +142,7 @@ fun PhoneLoginScreen(
             if (result.isSuccess) {
                 isPhoneVerified = true
                 userPrefs.saveUserCredentials("phone_${phone}", "PHONE_AUTH_TOKEN")
-                Log.d("PhoneLoginScreen", "✅ Phone verified successfully")
+                Log.d("PhoneLoginScreen", "Phone verified successfully")
                 Toast.makeText(context, "Phone verified successfully!", Toast.LENGTH_SHORT).show()
                 onLoginSuccess()
             } else {
@@ -158,7 +158,7 @@ fun PhoneLoginScreen(
                     else -> exception?.message ?: "Invalid code"
                 }
                 errorMessage = errorMsg
-                Log.e("PhoneLoginScreen", "❌ OTP verification error: ${exception?.javaClass?.simpleName}", exception)
+                Log.e("PhoneLoginScreen", "OTP verification error: ${exception?.javaClass?.simpleName}", exception)
                 Log.e("PhoneLoginScreen", "   Error message: ${exception?.message}")
                 Log.e("PhoneLoginScreen", "   User message: $errorMsg")
             }

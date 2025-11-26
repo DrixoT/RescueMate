@@ -4,7 +4,7 @@
 [![Kotlin](https://img.shields.io/badge/Language-Kotlin-blue.svg)](https://kotlinlang.org/)
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-## 🚨 Emergency SOS & Health Monitoring Application
+## Emergency SOS & Health Monitoring Application
 
 RescueMate 2.0 is a comprehensive emergency response application that provides real-time health monitoring, automated emergency detection, and intelligent contact notification systems to keep you safe.
 
@@ -40,7 +40,7 @@ RescueMate 2.0 is a comprehensive emergency response application that provides r
 - **Certificate Pinning**: Protection against man-in-the-middle attacks
 - **ProGuard/R8 Obfuscation**: Code obfuscation for release builds
 
-## 📋 Requirements
+## Requirements
 
 ### System Requirements
 - **Minimum SDK**: Android 8.0 (API 26)
@@ -58,7 +58,7 @@ RescueMate 2.0 is a comprehensive emergency response application that provides r
 - **Body Sensors**: Health monitoring (optional)
 - **Bluetooth**: Smartwatch connectivity (optional)
 
-## 🚀 Getting Started
+## Getting Started
 
 ### 1. Clone the Repository
 ```bash
@@ -122,7 +122,7 @@ app/src/main/java/com/rescuemate/
 └── utils/                       # Utilities & helpers
 ```
 
-## 🔧 Configuration
+## Configuration
 
 ### Emergency System Configuration
 Edit `EmergencyConstants.kt` to customize:
@@ -194,7 +194,7 @@ Current test coverage: 70%+
 - Integration tests for emergency workflow
 - UI tests for critical user flows
 
-## 🔒 Security
+## Security
 
 ### Data Encryption
 - Medical data encrypted at rest using AES-256-GCM
@@ -240,11 +240,11 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - **Llamatik**: TinyLlama integration
 - **Android Open Source Project**: Core framework
 
-## ⚠️ Disclaimer
+## Disclaimer
 
 RescueMate 2.0 is designed to assist in emergency situations but should not replace professional emergency services. Always call your local emergency number (911, 112, etc.) in life-threatening situations.
 
 ---
 
-**Built with ❤️ for safety and peace of mind**
+**Built with care for safety and peace of mind**
 
