@@ -127,13 +127,39 @@ class AuthRepository(private val context: Context) {
     suspend fun signInWithGoogle(intent: Intent): Result<FirebaseUser> {
         return try {
             Log.d("AuthRepository", "Starting Google Sign-In authentication...")
-            val task = GoogleSignIn.getSignedInAccountFromIntent(intent)
-            val account = task.getResult(ApiException::class.java)
 
-            val idToken = account.idToken ?: throw Exception("Authentication configuration error")
-            Log.d("AuthRepository", "Google account retrieved, ID token present")
+            // Get the task from the intent
+            val task = GoogleSignIn.getSignedInAccountFromIntent(intent)
+            Log.d("AuthRepository", "Google Sign-In task created, checking if successful...")
+
+            // Check if task was successful and get the account
+            val account = if (task.isSuccessful) {
+                Log.d("AuthRepository", "Google Sign-In task successful")
+                task.result
+            } else {
+                Log.w("AuthRepository", "Google Sign-In task failed, getting result...")
+                task.getResult(ApiException::class.java)
+            }
+
+            // Null check for account
+            if (account == null) {
+                Log.e("AuthRepository", "Google Sign-In account is null")
+                throw Exception("Google Sign-In returned null account")
+            }
+
+            Log.d("AuthRepository", "Google account retrieved: ${account.email}")
+
+            // Null check for ID token
+            val idToken = account.idToken ?: run {
+                Log.e("AuthRepository", "Google account ID token is null - check Web Client ID configuration")
+                throw Exception("Google ID Token is null - Check Web Client ID configuration")
+            }
+
+            Log.d("AuthRepository", "ID token retrieved successfully")
 
             val credential = GoogleAuthProvider.getCredential(idToken, null)
+            Log.d("AuthRepository", "Firebase credential created, signing in...")
+
             val authResult = auth.signInWithCredential(credential).await()
             val user = authResult.user ?: throw Exception("Firebase User is null")
 
@@ -186,7 +212,10 @@ class AuthRepository(private val context: Context) {
     private fun updateLocalUser(user: FirebaseUser) {
         try {
             Log.d("AuthRepository", "Updating local user data for: ${user.uid}")
-            
+            Log.d("AuthRepository", "User display name: ${user.displayName}")
+            Log.d("AuthRepository", "User email: ${user.email}")
+            Log.d("AuthRepository", "User provider data count: ${user.providerData.size}")
+
             val email = user.email ?: run {
                 Log.w("AuthRepository", "User email is null, using placeholder")
                 "user@rescuemate.local"

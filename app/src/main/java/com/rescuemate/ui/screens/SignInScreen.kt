@@ -70,10 +70,18 @@ fun SignInScreen(
                                 Log.e("SignInScreen", "Error setting onboarding complete", e)
                             }
                             
-                            // Verify login state was saved
-                            val isLoggedIn = userPrefs.isLoggedIn()
+                            // Verify login state was saved with retry mechanism
+                            var isLoggedIn = userPrefs.isLoggedIn()
                             Log.d("SignInScreen", "Login state after Google auth: $isLoggedIn")
-                            
+
+                            // If login state wasn't saved, wait a bit and check again (safety net for any remaining race conditions)
+                            if (!isLoggedIn) {
+                                Log.w("SignInScreen", "Login state not immediately available, waiting and retrying...")
+                                kotlinx.coroutines.delay(100) // Small delay to ensure SharedPreferences commit completed
+                                isLoggedIn = userPrefs.isLoggedIn()
+                                Log.d("SignInScreen", "Login state after retry: $isLoggedIn")
+                            }
+
                             if (!isLoggedIn) {
                                 Log.e("SignInScreen", "Login state not properly saved after Google auth!")
                                 Toast.makeText(context, "Authentication error - please try again", Toast.LENGTH_LONG).show()

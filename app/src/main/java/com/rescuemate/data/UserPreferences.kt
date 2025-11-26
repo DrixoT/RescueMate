@@ -43,7 +43,7 @@ class UserPreferences(context: Context) {
                 putString(KEY_USER_EMAIL, email)
                 putString(KEY_USER_PASSWORD_HASH, passwordHash)
                 putBoolean(KEY_IS_LOGGED_IN, true)
-                apply()
+                commit() // Use commit() for synchronous write to prevent race condition
             }
             Log.d(TAG, "✅ User credentials saved successfully")
         } catch (e: Exception) {
