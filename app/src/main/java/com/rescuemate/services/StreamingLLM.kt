@@ -46,7 +46,7 @@ class StreamingLLM(private val modelPath: String) {
             Log.e(TAG, "Model file not found at $modelPath")
             return false
         }
-        
+
         try {
             modelContext = initModel(modelPath)
             if (modelContext != 0L) {
@@ -72,7 +72,7 @@ class StreamingLLM(private val modelPath: String) {
         }
 
         val prompt = buildPrompt(userInput)
-        
+
         try {
             generateTokenStream(modelContext, prompt) { token ->
                 onToken(token)
@@ -115,4 +115,3 @@ $userInput</s>
     
     fun isReady(): Boolean = isInitialized
 }
-

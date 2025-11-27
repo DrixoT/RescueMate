@@ -11,7 +11,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.*
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
@@ -44,11 +44,13 @@ fun SignInScreen(
     val scope = rememberCoroutineScope()
     val userPrefs = remember { UserPreferences(context) }
     val authRepo = remember { AuthRepository(context) }
+    val isGoogleLoading = remember { mutableStateOf(false) }
 
     // Google Sign In Launcher
     val googleSignInLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
     ) { result ->
+        isGoogleLoading.value = false  // Reset loading state
         Log.d("SignInScreen", "Google Sign-In launcher result: resultCode=${result.resultCode}")
         
         if (result.resultCode == Activity.RESULT_OK) {
@@ -245,11 +247,15 @@ fun SignInScreen(
                 modifier = Modifier.fillMaxWidth()
             ) {
                 SignInButton(
-                    text = stringResource(R.string.continue_with_google),
-                    icon = Icons.Default.Login, 
-                    onClick = { 
-                        val signInIntent = authRepo.getGoogleSignInIntent()
-                        googleSignInLauncher.launch(signInIntent)
+                    text = if (isGoogleLoading.value) stringResource(R.string.signing_in) else stringResource(R.string.continue_with_google),
+                    icon = Icons.Default.Login,
+                    enabled = !isGoogleLoading.value,
+                    onClick = {
+                        if (!isGoogleLoading.value) {
+                            isGoogleLoading.value = true
+                            val signInIntent = authRepo.getGoogleSignInIntent()
+                            googleSignInLauncher.launch(signInIntent)
+                        }
                     }
                 )
                 SignInButton(
@@ -333,10 +339,12 @@ fun SignInScreen(
 fun SignInButton(
     text: String,
     icon: ImageVector,
+    enabled: Boolean = true,
     onClick: () -> Unit
 ) {
     OutlinedButton(
         onClick = onClick,
+        enabled = enabled,
         modifier = Modifier
             .fillMaxWidth()
             .height(56.dp),

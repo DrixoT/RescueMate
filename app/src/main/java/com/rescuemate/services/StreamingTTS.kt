@@ -39,7 +39,7 @@ class StreamingTTS(context: Context) {
                 tts?.let {
                     it.language = Locale.US
                     it.setSpeechRate(1.1f) // Slightly faster for conversational feel
-                    
+
                     it.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
                         override fun onStart(utteranceId: String?) {}
                         override fun onDone(utteranceId: String?) {}
@@ -131,4 +131,3 @@ class StreamingTTS(context: Context) {
         return tts?.isSpeaking ?: false
     }
 }
-

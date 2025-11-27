@@ -23,6 +23,7 @@
     <string name="welcome_back">Welcome Back</string>
     <string name="sign_in_to_continue">Sign in to continue</string>
     <string name="continue_with_google">Continue with Google</string>
+    <string name="signing_in">Signing in...</string>
     <string name="continue_with_apple">Continue with Apple</string>
     <string name="continue_with_phone">Continue with Phone</string>
     <string name="continue_with_email">Continue with Email</string>
@@ -98,4 +99,3 @@
     <string name="location_permission_required">Location permission is required to show your location on the map</string>
     <string name="enable_location">Please enable location services</string>
 </resources>
-

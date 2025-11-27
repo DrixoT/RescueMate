@@ -243,7 +243,7 @@ class LocalVoiceLLMService(private val context: Context) {
                 
                 // Wait a bit before listening again (avoid picking up self)
                 delay(1000)
-                
+
             } catch (e: Exception) {
                 Log.e(TAG, "Error in generation pipeline", e)
                 withContext(Dispatchers.Main) {
