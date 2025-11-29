@@ -12,14 +12,14 @@ dist/
 build/
 *.tsbuildinfo
 
-# Environment Variables (CRITICAL - NEVER COMMIT)
+# Environment Variables 
 .env
 .env.local
 .env.production
 .env.development
 *.env
 
-# API Keys and Secrets (CRITICAL - NEVER COMMIT)
+# API Keys and Secrets 
 *api-key*
 *secret*
 config/secrets.js
