@@ -43,7 +43,8 @@ object ProfanityFilter {
         // Check for exact matches
         for (word in profanityList) {
             // Check if word appears as standalone or with word boundaries
-            if (lowerText.contains(Regex("\\b$word\\b")) || 
+            // IMPORTANT: Escape the word to handle special regex characters like *
+            if (lowerText.contains(Regex("\\b${Regex.escape(word)}\\b")) || 
                 lowerText.contains(word)) {
                 return true
             }
@@ -52,7 +53,7 @@ object ProfanityFilter {
         // Check for leetspeak variations (1 for i, 3 for e, 0 for o, etc.)
         val normalized = normalizeLeetSpeak(lowerText)
         for (word in profanityList) {
-            if (normalized.contains(Regex("\\b$word\\b")) || 
+            if (normalized.contains(Regex("\\b${Regex.escape(word)}\\b")) || 
                 normalized.contains(word)) {
                 return true
             }
@@ -82,7 +83,8 @@ object ProfanityFilter {
         val lowerText = text.lowercase(Locale.getDefault())
         
         for (word in profanityList) {
-            val regex = Regex("\\b$word\\b", RegexOption.IGNORE_CASE)
+            // IMPORTANT: Escape the word to handle special regex characters like *
+            val regex = Regex("\\b${Regex.escape(word)}\\b", RegexOption.IGNORE_CASE)
             filtered = regex.replace(filtered) { matchResult ->
                 "*".repeat(matchResult.value.length)
             }
@@ -121,4 +123,3 @@ object ProfanityFilter {
         return filterProfanity(text)
     }
 }
-

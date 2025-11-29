@@ -11,6 +11,7 @@ import com.google.android.gms.common.api.ApiException
 import com.google.android.gms.tasks.Task
 import com.google.firebase.auth.AuthCredential
 import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.auth.FirebaseAuthException
 import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.auth.GoogleAuthProvider
 import com.rescuemate.R
@@ -75,29 +76,70 @@ class AuthRepository(private val context: Context) {
             updateLocalUser(user)
             
             Result.success(user)
+        } catch (e: FirebaseAuthException) {
+            // Handle Firebase-specific authentication errors
+            val errorCode = e.errorCode
+            Log.e("AuthRepository", "Email Sign-In FirebaseAuthException")
+            Log.e("AuthRepository", "   Error code: $errorCode")
+            Log.e("AuthRepository", "   Error message: ${e.message}")
+            
+            // Create a more descriptive error message based on Firebase error code
+            val errorMessage = when (errorCode) {
+                "ERROR_USER_NOT_FOUND" -> "Account not found. Please create an account."
+                "ERROR_WRONG_PASSWORD" -> "Incorrect password. Please try again."
+                "ERROR_INVALID_EMAIL" -> "Invalid email format. Please check your email."
+                "ERROR_TOO_MANY_REQUESTS" -> "Too many failed attempts. Please try again later."
+                "ERROR_NETWORK_REQUEST_FAILED" -> "Network error. Please check your connection."
+                "ERROR_INVALID_CREDENTIAL" -> "Invalid credentials. Please check your email and password."
+                "ERROR_OPERATION_NOT_ALLOWED" -> "Email/password sign-in is not enabled. Please contact support."
+                "ERROR_USER_DISABLED" -> "This account has been disabled. Please contact support."
+                else -> e.message ?: "Authentication failed. Please try again."
+            }
+            
+            Result.failure(Exception(errorMessage))
         } catch (e: Exception) {
             Log.e("AuthRepository", "Email Sign-In failed: ${e.javaClass.simpleName}", e)
             Log.e("AuthRepository", "   Error message: ${e.message}")
             
-            // Extract Firebase error code if available in message
+            // Extract Firebase error code if available in message (fallback for non-FirebaseAuthException)
             val errorCode = e.message?.let { msg ->
                 when {
-                    msg.contains("ERROR_USER_NOT_FOUND", ignoreCase = true) -> "USER_NOT_FOUND"
-                    msg.contains("ERROR_WRONG_PASSWORD", ignoreCase = true) -> "WRONG_PASSWORD"
-                    msg.contains("ERROR_INVALID_EMAIL", ignoreCase = true) -> "INVALID_EMAIL"
-                    msg.contains("ERROR_TOO_MANY_REQUESTS", ignoreCase = true) -> "TOO_MANY_REQUESTS"
-                    msg.contains("ERROR_NETWORK_REQUEST_FAILED", ignoreCase = true) -> "NETWORK_ERROR"
+                    msg.contains("ERROR_USER_NOT_FOUND", ignoreCase = true) ||
+                    msg.contains("no user record", ignoreCase = true) ||
+                    msg.contains("user not found", ignoreCase = true) -> "USER_NOT_FOUND"
+                    msg.contains("ERROR_WRONG_PASSWORD", ignoreCase = true) ||
+                    msg.contains("wrong password", ignoreCase = true) ||
+                    msg.contains("invalid-credential", ignoreCase = true) -> "WRONG_PASSWORD"
+                    msg.contains("ERROR_INVALID_EMAIL", ignoreCase = true) ||
+                    msg.contains("invalid-email", ignoreCase = true) -> "INVALID_EMAIL"
+                    msg.contains("ERROR_TOO_MANY_REQUESTS", ignoreCase = true) ||
+                    msg.contains("too many requests", ignoreCase = true) ||
+                    msg.contains("blocked", ignoreCase = true) ||
+                    msg.contains("unusual activity", ignoreCase = true) -> "TOO_MANY_REQUESTS"
+                    msg.contains("ERROR_NETWORK_REQUEST_FAILED", ignoreCase = true) ||
+                    msg.contains("network", ignoreCase = true) -> "NETWORK_ERROR"
                     msg.contains("ERROR_INVALID_CREDENTIAL", ignoreCase = true) -> "INVALID_CREDENTIAL"
                     else -> null
                 }
             }
             
             if (errorCode != null) {
-                Log.e("AuthRepository", "   Firebase error code: $errorCode")
+                Log.e("AuthRepository", "   Detected error code: $errorCode")
+            }
+            
+            // Create user-friendly error message
+            val errorMessage = when (errorCode) {
+                "TOO_MANY_REQUESTS" -> "Too many failed attempts. Please try again later."
+                "USER_NOT_FOUND" -> "Account not found. Please create an account."
+                "WRONG_PASSWORD" -> "Incorrect password. Please try again."
+                "INVALID_EMAIL" -> "Invalid email format. Please check your email."
+                "NETWORK_ERROR" -> "Network error. Please check your connection."
+                "INVALID_CREDENTIAL" -> "Invalid credentials. Please check your email and password."
+                else -> e.message ?: "Authentication failed. Please try again."
             }
             
             Log.e("AuthRepository", "   Stack trace: ${e.stackTraceToString().take(500)}")
-            Result.failure(e)
+            Result.failure(Exception(errorMessage))
         }
     }
     
@@ -233,9 +275,18 @@ class AuthRepository(private val context: Context) {
             Log.d("AuthRepository", "Credentials saved")
             
             // Save profile info with null safety and defaults
-            val displayName = user.displayName?.takeIf { it.isNotBlank() } 
-                ?: userPrefs.getUserName()
-                ?: "User"
+            var displayName = user.displayName
+            if (displayName.isNullOrBlank()) {
+                // Try to get name from email if available
+                displayName = if (email.contains("@")) {
+                    email.substringBefore("@").replace(".", " ").capitalize()
+                } else {
+                    "RescueMate User"
+                }
+            }
+            
+            // Double check to ensure we never pass a blank string if UserPreferences requires it
+            if (displayName.isBlank()) displayName = "User"
             
             val age = userPrefs.getUserAge() ?: ""
             val gender = userPrefs.getUserGender() ?: ""
@@ -243,13 +294,18 @@ class AuthRepository(private val context: Context) {
                 ?: userPrefs.getUserPhone() 
                 ?: ""
             
-            userPrefs.saveUserProfile(
-                name = displayName,
-                age = age,
-                gender = gender,
-                phone = phone
-            )
-            Log.d("AuthRepository", "Profile info updated")
+            // Safe save - catching specific exceptions from UserPreferences
+            try {
+                userPrefs.saveUserProfile(
+                    name = displayName!!, // guaranteed not null/blank by above check
+                    age = age,
+                    gender = gender,
+                    phone = phone
+                )
+                Log.d("AuthRepository", "Profile info updated")
+            } catch (e: Exception) {
+                Log.e("AuthRepository", "Error saving user profile details: ${e.message}")
+            }
             
             userPrefs.setUserId(user.uid)
             Log.d("AuthRepository", "User ID set: ${user.uid}")
@@ -291,7 +347,7 @@ class AuthRepository(private val context: Context) {
                 // User is logged in, update phone number
                 user.updatePhoneNumber(credential).await()
                 userPrefs.saveUserProfile(
-                    name = userPrefs.getUserName() ?: "",
+                    name = userPrefs.getUserName() ?: "User",
                     age = userPrefs.getUserAge() ?: "",
                     gender = userPrefs.getUserGender() ?: "",
                     phone = user.phoneNumber ?: ""
@@ -317,7 +373,7 @@ class AuthRepository(private val context: Context) {
                 // User is logged in, update their phone number
                 user.updatePhoneNumber(credential).await()
                 userPrefs.saveUserProfile(
-                    name = userPrefs.getUserName() ?: "",
+                    name = userPrefs.getUserName() ?: "User",
                     age = userPrefs.getUserAge() ?: "",
                     gender = userPrefs.getUserGender() ?: "",
                     phone = user.phoneNumber ?: ""
@@ -356,5 +412,9 @@ class AuthRepository(private val context: Context) {
             Result.failure(e)
         }
     }
+    
+    // Helper extension for capitalization
+    private fun String.capitalize(): String {
+        return this.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
+    }
 }
-

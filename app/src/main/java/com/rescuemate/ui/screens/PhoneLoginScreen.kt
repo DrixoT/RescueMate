@@ -165,18 +165,26 @@ fun PhoneLoginScreen(
         }
     }
 
-    Scaffold(
-        containerColor = CosmicBackground,
+    com.rescuemate.ui.components.CosmicScaffold(
         topBar = {
-            TopAppBar(
-                title = { Text("Sign in with Phone", color = CosmicTextPrimary) },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.Default.ArrowBack, "Back", tint = CosmicTextPrimary)
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = CosmicBackground)
-            )
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                IconButton(onClick = onBack) {
+                    Icon(
+                        imageVector = Icons.Default.ArrowBack,
+                        contentDescription = "Back",
+                        tint = CosmicTextPrimary
+                    )
+                }
+                com.rescuemate.ui.components.CosmicHeader(
+                    text = "Sign in with Phone",
+                    modifier = Modifier.padding(start = 8.dp)
+                )
+            }
         }
     ) { padding ->
         Column(
@@ -212,36 +220,20 @@ fun PhoneLoginScreen(
             Spacer(modifier = Modifier.height(16.dp))
             
             if (!isCodeSent) {
-                OutlinedTextField(
+                com.rescuemate.ui.components.CosmicInput(
                     value = phone,
                     onValueChange = { phone = it },
-                    label = { Text("Phone Number (+1...)") },
+                    label = "Phone Number (+1...)",
                     modifier = Modifier.fillMaxWidth(),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
-                    singleLine = true,
-                    leadingIcon = { Icon(Icons.Default.Phone, null) },
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = CosmicPrimary,
-                        unfocusedBorderColor = CosmicTextSecondary
-                    )
+                    placeholder = "+1234567890"
                 )
                 
-                Button(
+                com.rescuemate.ui.components.CosmicButton(
+                    text = "Send OTP",
                     onClick = { sendOtp() },
-                    enabled = phone.isNotBlank() && !isLoading,
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = ButtonDefaults.buttonColors(containerColor = CosmicPrimary)
-                ) {
-                    if (isLoading) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(20.dp),
-                            color = Color.White,
-                            strokeWidth = 2.dp
-                        )
-                    } else {
-                        Text("Send OTP")
-                    }
-                }
+                    isPrimary = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
             } else {
                 Text(
                     "Enter the code sent to $phone",
@@ -249,50 +241,40 @@ fun PhoneLoginScreen(
                     color = CosmicTextSecondary
                 )
                 
-                OutlinedTextField(
+                com.rescuemate.ui.components.CosmicInput(
                     value = otpCode,
                     onValueChange = { otpCode = it },
-                    label = { Text("OTP Code") },
+                    label = "OTP Code",
                     modifier = Modifier.fillMaxWidth(),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    singleLine = true,
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = CosmicPrimary,
-                        unfocusedBorderColor = CosmicTextSecondary
-                    )
+                    placeholder = "123456"
                 )
                 
-                Button(
+                com.rescuemate.ui.components.CosmicButton(
+                    text = "Verify",
                     onClick = { verifyOtp() },
-                    enabled = otpCode.isNotBlank() && !isLoading,
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = ButtonDefaults.buttonColors(containerColor = CosmicPrimary)
-                ) {
-                    if (isLoading) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(20.dp),
-                            color = Color.White,
-                            strokeWidth = 2.dp
-                        )
-                    } else {
-                        Icon(Icons.Default.Check, null)
-                        Spacer(Modifier.width(8.dp))
-                        Text("Verify")
-                    }
-                }
+                    isPrimary = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
             }
             
             if (errorMessage != null) {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFFFFEBEE))
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)
                 ) {
                     Text(
                         errorMessage!!,
                         modifier = Modifier.padding(16.dp),
-                        color = Color(0xFFC62828)
+                        color = MaterialTheme.colorScheme.error
                     )
                 }
+            }
+            
+            if (isLoading) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(32.dp),
+                    color = CosmicPrimary
+                )
             }
         }
     }

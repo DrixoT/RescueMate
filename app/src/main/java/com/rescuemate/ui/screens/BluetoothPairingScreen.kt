@@ -91,27 +91,12 @@ fun BluetoothPairingScreen(
         }
     }
 
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(
-                brush = Brush.verticalGradient(
-                    colors = listOf(
-                        CosmicBackground,
-                        CosmicCard,
-                        CosmicCardHover
-                    )
-                )
-            )
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(24.dp)
-        ) {
-            // Header
+    com.rescuemate.ui.components.CosmicScaffold(
+        topBar = {
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 IconButton(onClick = onBack) {
@@ -121,21 +106,23 @@ fun BluetoothPairingScreen(
                         tint = CosmicTextPrimary
                     )
                 }
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = stringResource(R.string.bluetooth_pairing),
-                        style = MaterialTheme.typography.titleLarge,
-                        color = CosmicTextPrimary
+                Column(modifier = Modifier.weight(1f).padding(start = 8.dp)) {
+                    com.rescuemate.ui.components.CosmicHeader(
+                        text = stringResource(R.string.bluetooth_pairing)
                     )
-                    Text(
-                        text = "Pair your smartwatch",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = CosmicTextSecondary,
-                        letterSpacing = 2.sp
+                    com.rescuemate.ui.components.CosmicSubHeader(
+                        text = "Pair your smartwatch"
                     )
                 }
             }
-
+        }
+    ) { paddingValues ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(paddingValues)
+                .padding(24.dp)
+        ) {
             Spacer(modifier = Modifier.height(16.dp))
 
             // Permission Check

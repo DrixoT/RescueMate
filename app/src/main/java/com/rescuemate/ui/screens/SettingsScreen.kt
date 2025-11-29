@@ -3,6 +3,7 @@ package com.rescuemate.ui.screens
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -37,27 +38,12 @@ fun SettingsScreen(
     var locationTracking by remember { mutableStateOf(true) }
     var soundAlerts by remember { mutableStateOf(true) }
 
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(
-                brush = Brush.verticalGradient(
-                    colors = listOf(
-                        CosmicBackground,
-                        CosmicCard,
-                        CosmicCardHover
-                    )
-                )
-            )
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(24.dp)
-        ) {
-            // Header
+    com.rescuemate.ui.components.CosmicScaffold(
+        topBar = {
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 IconButton(onClick = onBack) {
@@ -67,243 +53,134 @@ fun SettingsScreen(
                         tint = CosmicTextPrimary
                     )
                 }
-                Column {
-                    Text(
-                        text = stringResource(R.string.settings),
-                        style = MaterialTheme.typography.titleLarge,
-                        color = CosmicTextPrimary
-                    )
-                    Text(
-                        text = stringResource(R.string.configure_protection),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = CosmicTextSecondary,
-                        letterSpacing = 2.sp
-                    )
-                }
+                com.rescuemate.ui.components.CosmicHeader(
+                    text = stringResource(R.string.settings),
+                    modifier = Modifier.padding(start = 8.dp)
+                )
+            }
+        }
+    ) { paddingValues ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(paddingValues)
+                .padding(horizontal = 24.dp)
+                .verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(24.dp)
+        ) {
+            // Settings Sections
+            
+            // Emergency Settings
+            SettingsSection(
+                title = stringResource(R.string.emergency_settings)
+            ) {
+                SettingItem(
+                    icon = Icons.Default.Notifications,
+                    title = stringResource(R.string.auto_send_alert),
+                    description = stringResource(R.string.auto_send_alert_desc),
+                    checked = autoSendAlert,
+                    onCheckedChange = { autoSendAlert = it }
+                )
+                Divider(color = CosmicBorder)
+                SettingItem(
+                    icon = Icons.Default.LocationOn,
+                    title = stringResource(R.string.location_tracking),
+                    description = stringResource(R.string.location_tracking_desc),
+                    checked = locationTracking,
+                    onCheckedChange = { locationTracking = it }
+                )
+                Divider(color = CosmicBorder)
+                SettingItem(
+                    icon = Icons.Default.Shield,
+                    title = stringResource(R.string.sound_alerts),
+                    description = stringResource(R.string.sound_alerts_desc),
+                    checked = soundAlerts,
+                    onCheckedChange = { soundAlerts = it }
+                )
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // Settings Sections
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f)
-                    .verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(24.dp)
+            // AI & Automation
+            SettingsSection(
+                title = stringResource(R.string.ai_automation)
             ) {
-                // Emergency Settings
-                Column(
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    Text(
-                        text = stringResource(R.string.emergency_settings),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = CosmicTextSecondary,
-                        letterSpacing = 2.sp
-                    )
+                SettingButton(
+                    icon = Icons.Default.Mic,
+                    title = stringResource(R.string.setup_voice_ai),
+                    description = stringResource(R.string.setup_voice_ai_desc),
+                    onClick = onNavigateToVoiceAI
+                )
+            }
 
-                    Card(
-                        colors = CardDefaults.cardColors(
-                            containerColor = CosmicCard
-                        ),
-                        border = CardDefaults.outlinedCardBorder().copy(
-                            brush = Brush.linearGradient(listOf(CosmicBorder, CosmicBorder))
-                        )
-                    ) {
-                        Column {
-                            SettingItem(
-                                icon = Icons.Default.Notifications,
-                                title = stringResource(R.string.auto_send_alert),
-                                description = stringResource(R.string.auto_send_alert_desc),
-                                checked = autoSendAlert,
-                                onCheckedChange = { autoSendAlert = it }
-                            )
-                            Divider(color = CosmicBorder)
-                            SettingItem(
-                                icon = Icons.Default.LocationOn,
-                                title = stringResource(R.string.location_tracking),
-                                description = stringResource(R.string.location_tracking_desc),
-                                checked = locationTracking,
-                                onCheckedChange = { locationTracking = it }
-                            )
-                            Divider(color = CosmicBorder)
-                            SettingItem(
-                                icon = Icons.Default.Shield,
-                                title = stringResource(R.string.sound_alerts),
-                                description = stringResource(R.string.sound_alerts_desc),
-                                checked = soundAlerts,
-                                onCheckedChange = { soundAlerts = it }
-                            )
+            // Devices
+            SettingsSection(
+                title = "Devices"
+            ) {
+                SettingButton(
+                    icon = Icons.Default.Bluetooth,
+                    title = "Smartwatch Pairing",
+                    description = "Connect your smartwatch for health monitoring",
+                    onClick = onNavigateToBluetooth
+                )
+            }
+
+            // Appearance
+            SettingsSection(
+                title = stringResource(R.string.appearance)
+            ) {
+                SettingButton(
+                    icon = Icons.Default.Palette,
+                    title = stringResource(R.string.theme),
+                    description = stringResource(R.string.cosmic_dark_default),
+                    onClick = { /* Handle theme */ }
+                )
+            }
+
+            // Account Actions
+            SettingsSection(
+                title = "Account"
+            ) {
+                SettingButton(
+                    icon = Icons.Default.Logout,
+                    title = "Sign Out",
+                    description = "Log out of your account",
+                    onClick = {
+                        val userPrefs = com.rescuemate.data.UserPreferences(context)
+                        userPrefs.logout()
+                        userPrefs.setOnboardingComplete(false)
+
+                        // Navigate to SignIn screen and clear back stack
+                        navController?.navigate(Screen.SignIn.route) {
+                            popUpTo(0) { inclusive = true }
                         }
                     }
-                }
+                )
+                Divider(color = CosmicBorder)
+                SettingButton(
+                    icon = Icons.Default.Refresh,
+                    title = "Reset App Data",
+                    description = "Clear all data and return to onboarding",
+                    onClick = {
+                        val userPrefs = com.rescuemate.data.UserPreferences(context)
+                        userPrefs.clearAllData()
 
-                // AI & Automation
-                Column(
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    Text(
-                        text = stringResource(R.string.ai_automation),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = CosmicTextSecondary,
-                        letterSpacing = 2.sp
-                    )
-
-                    Card(
-                        colors = CardDefaults.cardColors(
-                            containerColor = CosmicCard
-                        ),
-                        border = CardDefaults.outlinedCardBorder().copy(
-                            brush = Brush.linearGradient(listOf(CosmicBorder, CosmicBorder))
-                        )
-                    ) {
-                        SettingButton(
-                            icon = Icons.Default.Mic,
-                            title = stringResource(R.string.setup_voice_ai),
-                            description = stringResource(R.string.setup_voice_ai_desc),
-                            onClick = onNavigateToVoiceAI
-                        )
-                    }
-                }
-
-                // Devices
-                Column(
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    Text(
-                        text = "Devices",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = CosmicTextSecondary,
-                        letterSpacing = 2.sp
-                    )
-
-                    Card(
-                        colors = CardDefaults.cardColors(
-                            containerColor = CosmicCard
-                        ),
-                        border = CardDefaults.outlinedCardBorder().copy(
-                            brush = Brush.linearGradient(listOf(CosmicBorder, CosmicBorder))
-                        )
-                    ) {
-                        SettingButton(
-                            icon = Icons.Default.Bluetooth,
-                            title = "Smartwatch Pairing",
-                            description = "Connect your smartwatch for health monitoring",
-                            onClick = onNavigateToBluetooth
-                        )
-                    }
-                }
-
-                // Appearance
-                Column(
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    Text(
-                        text = stringResource(R.string.appearance),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = CosmicTextSecondary,
-                        letterSpacing = 2.sp
-                    )
-
-                    Card(
-                        colors = CardDefaults.cardColors(
-                            containerColor = CosmicCard
-                        ),
-                        border = CardDefaults.outlinedCardBorder().copy(
-                            brush = Brush.linearGradient(listOf(CosmicBorder, CosmicBorder))
-                        )
-                    ) {
-                        SettingButton(
-                            icon = Icons.Default.Palette,
-                            title = stringResource(R.string.theme),
-                            description = stringResource(R.string.cosmic_dark_default),
-                            onClick = { /* Handle theme */ }
-                        )
-                    }
-                }
-
-                // Account Actions
-                Column(
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    Text(
-                        text = "Account",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = CosmicTextSecondary,
-                        letterSpacing = 2.sp
-                    )
-
-                    Card(
-                        colors = CardDefaults.cardColors(
-                            containerColor = CosmicCard
-                        ),
-                        border = CardDefaults.outlinedCardBorder().copy(
-                            brush = Brush.linearGradient(listOf(CosmicBorder, CosmicBorder))
-                        )
-                    ) {
-                        Column {
-                            SettingButton(
-                                icon = Icons.Default.Logout,
-                                title = "Sign Out",
-                                description = "Log out of your account",
-                                onClick = {
-                                    val userPrefs = com.rescuemate.data.UserPreferences(context)
-                                    userPrefs.logout()
-                                    userPrefs.setOnboardingComplete(false)
-
-                                    // Navigate to SignIn screen and clear back stack
-                                    navController?.navigate(Screen.SignIn.route) {
-                                        popUpTo(0) { inclusive = true }
-                                    }
-                                }
-                            )
-                            Divider(color = CosmicBorder)
-                            SettingButton(
-                                icon = Icons.Default.Refresh,
-                                title = "Reset App Data",
-                                description = "Clear all data and return to onboarding",
-                                onClick = {
-                                    val userPrefs = com.rescuemate.data.UserPreferences(context)
-                                    userPrefs.clearAllData()
-
-                                    // Navigate to Onboarding screen and clear back stack
-                                    navController?.navigate(Screen.Onboarding.route) {
-                                        popUpTo(0) { inclusive = true }
-                                    }
-                                }
-                            )
+                        // Navigate to Onboarding screen and clear back stack
+                        navController?.navigate(Screen.Onboarding.route) {
+                            popUpTo(0) { inclusive = true }
                         }
                     }
-                }
+                )
+            }
 
-                // About
-                Column(
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    Text(
-                        text = stringResource(R.string.about),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = CosmicTextSecondary,
-                        letterSpacing = 2.sp
-                    )
-
-                    Card(
-                        colors = CardDefaults.cardColors(
-                            containerColor = CosmicCard
-                        ),
-                        border = CardDefaults.outlinedCardBorder().copy(
-                            brush = Brush.linearGradient(listOf(CosmicBorder, CosmicBorder))
-                        )
-                    ) {
-                        SettingButton(
-                            icon = Icons.Default.Info,
-                            title = stringResource(R.string.app_information),
-                            description = stringResource(R.string.version),
-                            onClick = { /* Handle app info */ }
-                        )
-                    }
-                }
+            // About
+            SettingsSection(
+                title = stringResource(R.string.about)
+            ) {
+                SettingButton(
+                    icon = Icons.Default.Info,
+                    title = stringResource(R.string.app_information),
+                    description = stringResource(R.string.version),
+                    onClick = { /* Handle app info */ }
+                )
             }
 
             Spacer(modifier = Modifier.height(16.dp))
@@ -335,6 +212,37 @@ fun SettingsScreen(
                     )
                 }
             }
+            
+            Spacer(modifier = Modifier.height(32.dp))
+        }
+    }
+}
+
+@Composable
+fun SettingsSection(
+    title: String,
+    content: @Composable ColumnScope.() -> Unit
+) {
+    Column(
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Text(
+            text = title.uppercase(),
+            style = MaterialTheme.typography.labelSmall,
+            color = CosmicTextSecondary,
+            letterSpacing = 2.sp
+        )
+
+        Card(
+            colors = CardDefaults.cardColors(
+                containerColor = CosmicCard
+            ),
+            border = CardDefaults.outlinedCardBorder().copy(
+                brush = Brush.linearGradient(listOf(CosmicBorder, CosmicBorder))
+            ),
+            shape = RoundedCornerShape(16.dp)
+        ) {
+            Column(content = content)
         }
     }
 }

@@ -280,8 +280,7 @@ fun SetupWizardScreen(
         }
     }
 
-    Scaffold(
-        containerColor = CosmicBackground,
+    com.rescuemate.ui.components.CosmicScaffold(
         bottomBar = {
             Row(
                 modifier = Modifier

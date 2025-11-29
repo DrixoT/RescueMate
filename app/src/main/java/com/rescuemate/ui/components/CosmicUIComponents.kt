@@ -1,56 +1,33 @@
 package com.rescuemate.ui.components
 
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.*
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
@@ -64,6 +41,8 @@ import com.rescuemate.ui.theme.CosmicPrimary
 import com.rescuemate.ui.theme.CosmicTextPrimary
 import com.rescuemate.ui.theme.CosmicTextSecondary
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlin.random.Random
 
 object AsciiArt {
     const val STAR = "*"
@@ -76,18 +55,92 @@ object AsciiArt {
 }
 
 @Composable
+fun GalaxyBackground(
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit
+) {
+    var size by remember { mutableStateOf(IntSize.Zero) }
+    val stars = remember { mutableStateListOf<Star>() }
+
+    LaunchedEffect(size) {
+        if (size.width > 0 && size.height > 0) {
+            stars.clear()
+            repeat(100) {
+                stars.add(
+                    Star(
+                        x = Random.nextFloat() * size.width,
+                        y = Random.nextFloat() * size.height,
+                        size = Random.nextFloat() * 3f + 1f,
+                        speedX = (Random.nextFloat() - 0.5f) * 0.2f, // Reduced speed
+                        speedY = (Random.nextFloat() - 0.5f) * 0.2f, // Reduced speed
+                        alpha = Random.nextFloat() * 0.5f + 0.3f
+                    )
+                )
+            }
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        while (isActive) {
+            withFrameNanos {
+                stars.forEach { star ->
+                    star.x += star.speedX
+                    star.y += star.speedY
+
+                    // Wrap around screen edges
+                    if (star.x < 0) star.x = size.width.toFloat()
+                    if (star.x > size.width) star.x = 0f
+                    if (star.y < 0) star.y = size.height.toFloat()
+                    if (star.y > size.height) star.y = 0f
+                }
+            }
+        }
+    }
+
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .background(CosmicBackground)
+            .onSizeChanged { size = it }
+    ) {
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            stars.forEach { star ->
+                drawCircle(
+                    color = Color.White.copy(alpha = star.alpha),
+                    radius = star.size / 2,
+                    center = Offset(star.x, star.y)
+                )
+            }
+        }
+        content()
+    }
+}
+
+private data class Star(
+    var x: Float,
+    var y: Float,
+    val size: Float,
+    val speedX: Float,
+    val speedY: Float,
+    val alpha: Float
+)
+
+@Composable
 fun CosmicScaffold(
     modifier: Modifier = Modifier,
     topBar: @Composable () -> Unit = {},
+    bottomBar: @Composable () -> Unit = {},
     content: @Composable (PaddingValues) -> Unit
 ) {
-    Scaffold(
-        modifier = modifier,
-        topBar = topBar,
-        containerColor = CosmicBackground,
-        contentColor = CosmicTextPrimary,
-        content = content
-    )
+    GalaxyBackground(modifier = modifier) {
+        Scaffold(
+            topBar = topBar,
+            bottomBar = bottomBar,
+            containerColor = Color.Transparent, // Transparent to show GalaxyBackground
+            contentColor = CosmicTextPrimary,
+            content = content
+        )
+    }
 }
 
 @Composable
@@ -231,13 +284,15 @@ fun CosmicButton(
     text: String,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
-    isPrimary: Boolean = false
+    isPrimary: Boolean = false,
+    enabled: Boolean = true
 ) {
     Button(
         onClick = onClick,
-        modifier = modifier.height(50.dp),
+        enabled = enabled,
+        modifier = modifier.height(56.dp),
         colors = ButtonDefaults.buttonColors(
-            containerColor = if (isPrimary) CosmicPrimary.copy(alpha = 0.1f) else Color.Transparent,
+            containerColor = if (isPrimary) CosmicPrimary.copy(alpha = 0.15f) else Color.Transparent,
             contentColor = if (isPrimary) CosmicPrimary else CosmicTextSecondary
         ),
         border = BorderStroke(
@@ -249,10 +304,36 @@ fun CosmicButton(
     ) {
         Text(
             text = text.uppercase(),
-            style = AsciiSmall,
+            style = AsciiSmall.copy(fontWeight = FontWeight.Bold),
             letterSpacing = 2.sp
         )
     }
+}
+
+@Composable
+fun CosmicHeader(
+    text: String,
+    modifier: Modifier = Modifier
+) {
+    Text(
+        text = text.uppercase(),
+        style = AsciiLarge,
+        color = CosmicTextPrimary,
+        modifier = modifier
+    )
+}
+
+@Composable
+fun CosmicSubHeader(
+    text: String,
+    modifier: Modifier = Modifier
+) {
+    Text(
+        text = text.uppercase(),
+        style = AsciiMedium,
+        color = CosmicTextSecondary,
+        modifier = modifier
+    )
 }
 
 @Composable
@@ -328,4 +409,3 @@ fun RotatingStar(
             .graphicsLayer { rotationZ = angle }
     )
 }
-

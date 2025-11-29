@@ -53,9 +53,10 @@ fun SignInScreen(
         isGoogleLoading.value = false  // Reset loading state
         Log.d("SignInScreen", "Google Sign-In launcher result: resultCode=${result.resultCode}")
         
-        if (result.resultCode == Activity.RESULT_OK) {
-            val intent = result.data
-            if (intent != null) {
+        // Always try to process the intent, even if resultCode is not RESULT_OK
+        // This allows us to get the actual error code (like status code 10) instead of just showing "cancelled"
+        val intent = result.data
+        if (intent != null) {
                 scope.launch {
                     try {
                         Log.d("SignInScreen", "Processing Google Sign-In result...")
@@ -129,13 +130,14 @@ fun SignInScreen(
                         Toast.makeText(context, "Sign in error: ${e.message}", Toast.LENGTH_LONG).show()
                     }
                 }
-            } else {
-                Log.e("SignInScreen", "Google Sign-In intent is null")
-                Toast.makeText(context, "Sign in failed - no data received", Toast.LENGTH_SHORT).show()
-            }
-        } else {
-            Log.w("SignInScreen", "Google Sign-In cancelled or failed (resultCode=${result.resultCode})")
+        } else if (result.resultCode != Activity.RESULT_OK) {
+            // Only show "cancelled" if there's no intent data AND result is not OK
+            // This means the user actually cancelled (back button, etc.)
+            Log.w("SignInScreen", "Google Sign-In cancelled by user (resultCode=${result.resultCode})")
             Toast.makeText(context, "Sign in cancelled", Toast.LENGTH_SHORT).show()
+        } else {
+            Log.e("SignInScreen", "Google Sign-In intent is null")
+            Toast.makeText(context, "Sign in failed - no data received", Toast.LENGTH_SHORT).show()
         }
     }
     
@@ -171,22 +173,11 @@ fun SignInScreen(
         }
     }
 
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(
-                brush = Brush.verticalGradient(
-                    colors = listOf(
-                        CosmicBackground,
-                        CosmicCard,
-                        CosmicCardHover
-                    )
-                )
-            )
-    ) {
+    com.rescuemate.ui.components.CosmicScaffold { paddingValues ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .padding(paddingValues)
                 .padding(24.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center

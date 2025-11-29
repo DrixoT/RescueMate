@@ -56,16 +56,48 @@ fun HomeDashboard(
     onNavigate: (String) -> Unit
 ) {
     val context = LocalContext.current
-    val emergencyManager = remember { EmergencyManager(context) }
-    val healthMonitoring = remember { HealthMonitoringService(context) }
-    val conversationalService = remember { ElevenLabsConversationalService(context) }
+    
+    // Safe initialization of services
+    var startupError by remember { mutableStateOf<String?>(null) }
+    
+    val emergencyManager = remember {
+        try {
+            EmergencyManager(context)
+        } catch (e: Exception) {
+            Log.e("HomeDashboard", "CRITICAL: Failed to initialize EmergencyManager", e)
+            startupError = "Emergency System Error: ${e.message}"
+            null
+        }
+    }
+    
+    val healthMonitoring = remember {
+        try {
+            HealthMonitoringService(context)
+        } catch (e: Exception) {
+            Log.w("HomeDashboard", "Failed to initialize HealthMonitoringService", e)
+            null
+        }
+    }
+    
+    val conversationalService = remember {
+        try {
+            ElevenLabsConversationalService(context)
+        } catch (e: Exception) {
+            Log.w("HomeDashboard", "Failed to initialize ElevenLabsConversationalService", e)
+            null
+        }
+    }
     
     // Cleanup resources when composable leaves composition
     DisposableEffect(Unit) {
         onDispose {
             Log.d("HomeDashboard", "Cleaning up resources")
-            emergencyManager.cleanup()
-            conversationalService.cleanup()
+            try {
+                emergencyManager?.cleanup()
+                conversationalService?.cleanup()
+            } catch (e: Exception) {
+                Log.e("HomeDashboard", "Error during cleanup", e)
+            }
         }
     }
     
@@ -73,7 +105,7 @@ fun HomeDashboard(
     var isMonitoringActive by remember { mutableStateOf(false) }
     var currentHeartRate by remember { mutableStateOf<Int?>(null) }
     var lastHealthCheck by remember { mutableStateOf<Long?>(null) }
-    var currentEmergency by remember { mutableStateOf(emergencyManager.getCurrentEmergency()) }
+    var currentEmergency by remember { mutableStateOf(emergencyManager?.getCurrentEmergency()) }
     
     // Voice Conversation state
     var isVoiceConversationActive by remember { mutableStateOf(false) }
@@ -85,6 +117,14 @@ fun HomeDashboard(
     // Error handling state
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var showErrorDialog by remember { mutableStateOf(false) }
+    
+    // Show startup error if present
+    LaunchedEffect(startupError) {
+        if (startupError != null) {
+            errorMessage = startupError
+            showErrorDialog = true
+        }
+    }
     
     // SOS Confirmation Dialog state
     var showSOSConfirmation by remember { mutableStateOf(false) }
@@ -99,7 +139,7 @@ fun HomeDashboard(
     val recordAudioLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
     ) { isGranted ->
-        if (isGranted) {
+        if (isGranted && conversationalService != null) {
             // Permission granted, start conversation
             scope.launch {
                 startVoiceConversation(
@@ -151,8 +191,11 @@ fun HomeDashboard(
                 )
             }
         } else {
-            // Permission denied
-            errorMessage = "Microphone permission is required for voice conversation."
+            // Permission denied or service null
+            errorMessage = if (conversationalService == null) 
+                "Voice AI service is unavailable." 
+            else 
+                "Microphone permission is required for voice conversation."
             showErrorDialog = true
         }
     }
@@ -175,7 +218,9 @@ fun HomeDashboard(
                     null
                 }
                 
-                currentEmergency = emergencyManager.getCurrentEmergency()
+                if (emergencyManager != null) {
+                    currentEmergency = emergencyManager.getCurrentEmergency()
+                }
                 
                 val conversationPrefs = context.getSharedPreferences("ai_conversation_state", Context.MODE_PRIVATE)
                 isVoiceConversationActive = conversationPrefs.getBoolean("is_active", false)
@@ -246,7 +291,7 @@ fun HomeDashboard(
                     EmergencyStatusCard(
                         emergency = currentEmergency!!,
                         onConfirmSafe = {
-                            emergencyManager.userConfirmSafe()
+                            emergencyManager?.userConfirmSafe()
                             currentEmergency = null
                         }
                     )
@@ -296,7 +341,7 @@ fun HomeDashboard(
                         onClick = { /* Handled by hold/tap */ },
                         onTap = {
                             if (isVoiceConversationActive) {
-                                conversationalService.endConversation()
+                                conversationalService?.endConversation()
                                 isVoiceConversationActive = false
                                 conversationStatus = ""
                                 aiConversationMode = "idle"
@@ -304,6 +349,12 @@ fun HomeDashboard(
                                 conversationPrefs.edit().putBoolean("is_active", false).apply()
                                 toastMessage = "Voice Session Ended"
                             } else {
+                                if (conversationalService == null) {
+                                    errorMessage = "Voice service unavailable. Please restart app."
+                                    showErrorDialog = true
+                                    return@PlanetarySOSButton
+                                }
+                                
                                 val prefs = context.getSharedPreferences("voice_ai_prefs", Context.MODE_PRIVATE)
                                 val agentId = prefs.getString("agent_id", com.rescuemate.BuildConfig.ELEVEN_AGENT_ID) 
                                     ?: com.rescuemate.BuildConfig.ELEVEN_AGENT_ID
@@ -351,6 +402,12 @@ fun HomeDashboard(
                         aiConversationMode = aiConversationMode,
                         audioLevel = aiAudioLevel,
                         onShowConfirmation = {
+                            if (emergencyManager == null) {
+                                errorMessage = "Cannot initiate SOS: Emergency Manager failed to initialize."
+                                showErrorDialog = true
+                                return@PlanetarySOSButton
+                            }
+                            
                             showSOSConfirmation = true
                             remainingSeconds = 10
                             autoConfirmJob?.cancel()
@@ -433,7 +490,7 @@ fun HomeDashboard(
                                         phoneNumber = "", // Default or fetch from preferences
                                         medicalInfo = com.rescuemate.emergency.data.MedicalInfo(userId = userId) // Default empty medical info
                                     )
-                            emergencyManager.triggerManualEmergency(userId, userInfo)
+                            emergencyManager?.triggerManualEmergency(userId, userInfo)
                         } catch (e: Exception) {
                             Log.e("SOS", "Error", e)
                         }
@@ -487,8 +544,20 @@ fun PlanetarySOSButton(
     var holdJob by remember { mutableStateOf<Job?>(null) }
     
     val scale by animateFloatAsState(
-        targetValue = if (isPressed) 0.8f else 1f,
+        targetValue = if (isPressed) 0.9f else 1f,
         animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy)
+    )
+    
+    // Pulse animation for the button
+    val infiniteTransition = rememberInfiniteTransition(label = "sos_pulse")
+    val pulseScale by infiniteTransition.animateFloat(
+        initialValue = 1f,
+        targetValue = 1.1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1000, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "pulse"
     )
     
     Box(
@@ -504,8 +573,8 @@ fun PlanetarySOSButton(
                         hapticFeedback.performHapticFeedback(android.view.HapticFeedbackConstants.VIRTUAL_KEY)
                         
                         holdJob = scope.launch {
-                            delay(500) // Wait for tap distinction
-                            val duration = 2000L
+                            delay(300) // Wait for tap distinction
+                            val duration = 1500L
                             val startTime = System.currentTimeMillis()
                             while (System.currentTimeMillis() - startTime < duration) {
                                 holdProgress = (System.currentTimeMillis() - startTime) / duration.toFloat()
@@ -527,44 +596,73 @@ fun PlanetarySOSButton(
             },
         contentAlignment = Alignment.Center
     ) {
-        // Orbit Rings
-        if (isInAIConversation) {
-            CircularProgressIndicator(
-                progress = 1f,
-                modifier = Modifier.size(240.dp),
-                color = CosmicPrimary.copy(alpha = 0.3f),
-                strokeWidth = 1.dp
+        // Outer Pulse Ring (when idle)
+        if (!isPressed && !isInAIConversation) {
+            Box(
+                modifier = Modifier
+                    .size(200.dp)
+                    .scale(pulseScale)
+                    .border(1.dp, CosmicPrimary.copy(alpha = 0.3f), CircleShape)
             )
-            CircularProgressIndicator(
-                progress = 0.75f, // Static partial ring
-                modifier = Modifier.size(220.dp).rotate(if (aiConversationMode == "listening") 45f else 0f),
-                color = if (aiConversationMode == "listening") Color(0xFF4CAF50) else CosmicPrimary,
-                strokeWidth = 2.dp
+            Box(
+                modifier = Modifier
+                    .size(180.dp)
+                    .scale(pulseScale)
+                    .border(1.dp, CosmicPrimary.copy(alpha = 0.5f), CircleShape)
             )
         }
 
-        // Planetary Core (Star)
-        RotatingStar(
-            modifier = Modifier.size(120.dp),
-            color = if (holdProgress > 0) Color(0xFFFF5252) else CosmicPrimary
-        )
+        // Main Button Circle
+        Box(
+            modifier = Modifier
+                .size(160.dp)
+                .background(
+                    brush = Brush.radialGradient(
+                        colors = listOf(
+                            if (holdProgress > 0) Color(0xFFFF5252) else CosmicPrimary,
+                            if (holdProgress > 0) Color(0xFFD32F2F) else CosmicPrimaryDark
+                        )
+                    ),
+                    shape = CircleShape
+                )
+                .border(
+                    width = 2.dp,
+                    color = if (holdProgress > 0) Color.White else CosmicPrimaryLight,
+                    shape = CircleShape
+                ),
+            contentAlignment = Alignment.Center
+        ) {
+            if (isInAIConversation) {
+                 // AI Listening Visualizer
+                 Icon(
+                     imageVector = Icons.Default.GraphicEq,
+                     contentDescription = "AI Active",
+                     tint = Color.White,
+                     modifier = Modifier.size(48.dp)
+                 )
+            } else {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(
+                        text = "SOS",
+                        style = AsciiLarge.copy(fontSize = 32.sp, fontWeight = FontWeight.Bold),
+                        color = Color.White
+                    )
+                    Text(
+                        text = "HOLD",
+                        style = AsciiSmall.copy(fontSize = 10.sp),
+                        color = Color.White.copy(alpha = 0.8f)
+                    )
+                }
+            }
+        }
         
-        // Hold Progress
+        // Progress Ring
         if (holdProgress > 0) {
             CircularProgressIndicator(
                 progress = holdProgress,
-                modifier = Modifier.size(160.dp),
-                color = Color(0xFFFF5252),
+                modifier = Modifier.size(170.dp),
+                color = Color.White,
                 strokeWidth = 4.dp
-            )
-        }
-        
-        if (!isPressed && !isInAIConversation) {
-            Text(
-                text = "HOLD FOR SOS",
-                style = AsciiSmall.copy(fontSize = 10.sp),
-                color = CosmicTextSecondary,
-                modifier = Modifier.align(Alignment.BottomCenter).padding(top = 80.dp)
             )
         }
     }

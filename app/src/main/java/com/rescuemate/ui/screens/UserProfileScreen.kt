@@ -147,22 +147,11 @@ fun UserProfileScreen(
         }
     }
 
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(
-                brush = Brush.verticalGradient(
-                    colors = listOf(
-                        CosmicBackground,
-                        CosmicCard,
-                        CosmicCardHover
-                    )
-                )
-            )
-    ) {
+    com.rescuemate.ui.components.CosmicScaffold { paddingValues ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .padding(paddingValues)
                 .verticalScroll(rememberScrollState())
         ) {
             // Header
@@ -311,7 +300,7 @@ fun UserProfileScreen(
                     },
                     modifier = Modifier.fillMaxWidth(),
                     minLines = 3,
-                    colors = TextFieldDefaults.outlinedTextFieldColors(
+                    colors = OutlinedTextFieldDefaults.colors(
                         focusedBorderColor = CosmicPrimary,
                         unfocusedBorderColor = CosmicBorder,
                         focusedLabelColor = CosmicPrimary,
@@ -335,7 +324,7 @@ fun UserProfileScreen(
                     },
                     modifier = Modifier.fillMaxWidth(),
                     minLines = 2,
-                    colors = TextFieldDefaults.outlinedTextFieldColors(
+                    colors = OutlinedTextFieldDefaults.colors(
                         focusedBorderColor = CosmicPrimary,
                         unfocusedBorderColor = CosmicBorder,
                         focusedLabelColor = CosmicPrimary,
@@ -359,7 +348,7 @@ fun UserProfileScreen(
                     },
                     modifier = Modifier.fillMaxWidth(),
                     minLines = 2,
-                    colors = TextFieldDefaults.outlinedTextFieldColors(
+                    colors = OutlinedTextFieldDefaults.colors(
                         focusedBorderColor = CosmicPrimary,
                         unfocusedBorderColor = CosmicBorder,
                         focusedLabelColor = CosmicPrimary,
@@ -482,7 +471,7 @@ fun ProfileTextField(
             )
         },
         modifier = Modifier.fillMaxWidth(),
-        colors = TextFieldDefaults.outlinedTextFieldColors(
+        colors = OutlinedTextFieldDefaults.colors(
             focusedBorderColor = CosmicPrimary,
             unfocusedBorderColor = CosmicBorder,
             focusedLabelColor = CosmicPrimary,

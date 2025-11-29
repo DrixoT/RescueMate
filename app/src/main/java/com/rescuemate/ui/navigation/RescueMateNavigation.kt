@@ -1,5 +1,7 @@
 package com.rescuemate.ui.navigation
 
+import androidx.compose.animation.*
+import androidx.compose.animation.core.tween
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalContext
@@ -8,22 +10,8 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.rescuemate.data.UserPreferences
-import com.rescuemate.ui.screens.OnboardingScreen
-import com.rescuemate.ui.screens.SignInScreen
-import com.rescuemate.ui.screens.SignUpScreen
-import com.rescuemate.ui.screens.EmailLoginScreen
-import com.rescuemate.ui.screens.HomeDashboard
-import com.rescuemate.ui.screens.EmergencyContactsScreen
-import com.rescuemate.ui.screens.AddContactScreen
-import com.rescuemate.ui.screens.LiveLocationScreen
-import com.rescuemate.ui.screens.SettingsScreen
-import com.rescuemate.ui.screens.UserProfileScreen
-import com.rescuemate.ui.screens.VoiceAISetupScreen
-import com.rescuemate.ui.screens.PermissionRequestScreen
+import com.rescuemate.ui.screens.*
 import com.rescuemate.ui.screens.BluetoothPairingScreen as BTPairingScreen
-
-import com.rescuemate.ui.screens.SetupWizardScreen
-import com.rescuemate.ui.screens.PhoneLoginScreen
 
 @Composable
 fun RescueMateNavigation(
@@ -72,7 +60,31 @@ fun RescueMateNavigation(
     
     NavHost(
         navController = navController,
-        startDestination = startDestination
+        startDestination = startDestination,
+        enterTransition = {
+            slideInHorizontally(
+                initialOffsetX = { 1000 },
+                animationSpec = tween(300)
+            ) + fadeIn(animationSpec = tween(300))
+        },
+        exitTransition = {
+            slideOutHorizontally(
+                targetOffsetX = { -1000 },
+                animationSpec = tween(300)
+            ) + fadeOut(animationSpec = tween(300))
+        },
+        popEnterTransition = {
+            slideInHorizontally(
+                initialOffsetX = { -1000 },
+                animationSpec = tween(300)
+            ) + fadeIn(animationSpec = tween(300))
+        },
+        popExitTransition = {
+            slideOutHorizontally(
+                targetOffsetX = { 1000 },
+                animationSpec = tween(300)
+            ) + fadeOut(animationSpec = tween(300))
+        }
     ) {
         composable(Screen.Onboarding.route) {
             OnboardingScreen(
@@ -185,7 +197,22 @@ fun RescueMateNavigation(
             )
         }
         
-        composable(Screen.Contacts.route) {
+        // Modal-like transitions for secondary screens
+        composable(
+            route = Screen.Contacts.route,
+            enterTransition = {
+                slideInVertically(initialOffsetY = { 1000 }, animationSpec = tween(300)) + fadeIn()
+            },
+            exitTransition = {
+                slideOutVertically(targetOffsetY = { -1000 }, animationSpec = tween(300)) + fadeOut()
+            },
+            popEnterTransition = {
+                slideInVertically(initialOffsetY = { -1000 }, animationSpec = tween(300)) + fadeIn()
+            },
+            popExitTransition = {
+                slideOutVertically(targetOffsetY = { 1000 }, animationSpec = tween(300)) + fadeOut()
+            }
+        ) {
             EmergencyContactsScreen(
                 onBack = {
                     navController.popBackStack()
@@ -196,7 +223,15 @@ fun RescueMateNavigation(
             )
         }
         
-        composable(Screen.AddContact.route) {
+        composable(
+            route = Screen.AddContact.route,
+            enterTransition = {
+                slideInVertically(initialOffsetY = { 1000 }, animationSpec = tween(300)) + fadeIn()
+            },
+            exitTransition = {
+                slideOutVertically(targetOffsetY = { 1000 }, animationSpec = tween(300)) + fadeOut()
+            }
+        ) {
             AddContactScreen(
                 onBack = {
                     navController.popBackStack()
@@ -215,7 +250,15 @@ fun RescueMateNavigation(
             )
         }
         
-        composable(Screen.Settings.route) {
+        composable(
+            route = Screen.Settings.route,
+            enterTransition = {
+                slideInVertically(initialOffsetY = { 1000 }, animationSpec = tween(300)) + fadeIn()
+            },
+            exitTransition = {
+                slideOutVertically(targetOffsetY = { 1000 }, animationSpec = tween(300)) + fadeOut()
+            }
+        ) {
             SettingsScreen(
                 onBack = {
                     navController.popBackStack()

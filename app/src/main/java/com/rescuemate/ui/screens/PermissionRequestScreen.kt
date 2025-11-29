@@ -4,6 +4,8 @@ import android.Manifest
 import android.os.Build
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -47,22 +49,12 @@ fun PermissionRequestScreen(
         }
     }
 
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(
-                brush = Brush.verticalGradient(
-                    colors = listOf(
-                        CosmicBackground,
-                        CosmicCard,
-                        CosmicCardHover
-                    )
-                )
-            )
-    ) {
+    com.rescuemate.ui.components.CosmicScaffold { paddingValues ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .padding(paddingValues)
+                .verticalScroll(rememberScrollState())
                 .padding(32.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
@@ -126,29 +118,14 @@ fun PermissionRequestScreen(
 
             Spacer(modifier = Modifier.height(48.dp))
 
-            Button(
+            com.rescuemate.ui.components.CosmicButton(
+                text = "Grant Permissions",
                 onClick = {
                     permissionsState.launchMultiplePermissionRequest()
                 },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(56.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = CosmicPrimary
-                )
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Check,
-                    contentDescription = null,
-                    modifier = Modifier.size(20.dp)
-                )
-                Spacer(modifier = Modifier.width(12.dp))
-                Text(
-                    text = "Grant Permissions",
-                    style = MaterialTheme.typography.labelLarge,
-                    fontSize = 16.sp
-                )
-            }
+                modifier = Modifier.fillMaxWidth(),
+                isPrimary = true
+            )
 
             Spacer(modifier = Modifier.height(16.dp))
 
@@ -174,9 +151,7 @@ fun PermissionItem(
         colors = CardDefaults.cardColors(
             containerColor = CosmicCard.copy(alpha = 0.6f)
         ),
-        border = CardDefaults.outlinedCardBorder().copy(
-            brush = Brush.linearGradient(listOf(CosmicBorder, CosmicBorder))
-        )
+        border = androidx.compose.foundation.BorderStroke(1.dp, CosmicBorder)
     ) {
         Row(
             modifier = Modifier

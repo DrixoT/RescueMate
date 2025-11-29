@@ -65,27 +65,12 @@ fun LiveLocationScreen(
         }
     }
 
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(
-                brush = Brush.verticalGradient(
-                    colors = listOf(
-                        CosmicBackground,
-                        CosmicCard,
-                        CosmicCardHover
-                    )
-                )
-            )
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(24.dp)
-        ) {
-            // Header
+    com.rescuemate.ui.components.CosmicScaffold(
+        topBar = {
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 IconButton(onClick = onBack) {
@@ -95,22 +80,24 @@ fun LiveLocationScreen(
                         tint = CosmicTextPrimary
                     )
                 }
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = stringResource(R.string.live_location_title),
-                        style = MaterialTheme.typography.titleLarge,
-                        color = CosmicTextPrimary
+                Column(modifier = Modifier.weight(1f).padding(start = 8.dp)) {
+                    com.rescuemate.ui.components.CosmicHeader(
+                        text = stringResource(R.string.live_location_title)
                     )
-                    Text(
-                        text = stringResource(R.string.real_time_tracking),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = CosmicTextSecondary,
-                        letterSpacing = 2.sp
+                    com.rescuemate.ui.components.CosmicSubHeader(
+                        text = stringResource(R.string.real_time_tracking)
                     )
                 }
             }
-
-            Spacer(modifier = Modifier.height(16.dp))
+        }
+    ) { paddingValues ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(paddingValues)
+                .padding(24.dp)
+        ) {
+            Spacer(modifier = Modifier.height(8.dp))
 
             // Status Badge
             if (isSharing) {
@@ -210,22 +197,13 @@ fun LiveLocationScreen(
                                 textAlign = androidx.compose.ui.text.style.TextAlign.Center
                             )
                             Spacer(modifier = Modifier.height(24.dp))
-                            Button(
+                            com.rescuemate.ui.components.CosmicButton(
+                                text = "Grant Location Permission",
                                 onClick = {
                                     locationPermissionsState.launchMultiplePermissionRequest()
                                 },
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = CosmicPrimary
-                                )
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.LocationOn,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(18.dp)
-                                )
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text("Grant Location Permission")
-                            }
+                                isPrimary = true
+                            )
                         }
                     }
                     isLoadingLocation -> {
@@ -367,36 +345,16 @@ fun LiveLocationScreen(
             Spacer(modifier = Modifier.height(16.dp))
 
             // Share Location Button
-            Button(
+            com.rescuemate.ui.components.CosmicButton(
+                text = if (isSharing) {
+                    stringResource(R.string.stop_sharing_location)
+                } else {
+                    stringResource(R.string.share_my_location)
+                },
                 onClick = { isSharing = !isSharing },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(56.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = if (isSharing) CosmicCard else CosmicPrimary
-                ),
-                shape = MaterialTheme.shapes.extraLarge,
-                border = if (isSharing) {
-                    ButtonDefaults.outlinedButtonBorder.copy(
-                        brush = Brush.linearGradient(listOf(CosmicBorder, CosmicBorder))
-                    )
-                } else null
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Share,
-                    contentDescription = null,
-                    modifier = Modifier.size(20.dp)
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    text = if (isSharing) {
-                        stringResource(R.string.stop_sharing_location)
-                    } else {
-                        stringResource(R.string.share_my_location)
-                    },
-                    style = MaterialTheme.typography.labelLarge
-                )
-            }
+                modifier = Modifier.fillMaxWidth(),
+                isPrimary = !isSharing
+            )
 
             Spacer(modifier = Modifier.height(8.dp))
 

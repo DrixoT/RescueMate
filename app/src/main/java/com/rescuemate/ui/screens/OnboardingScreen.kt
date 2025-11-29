@@ -40,22 +40,11 @@ fun OnboardingScreen(
         label = "scale"
     )
 
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(
-                brush = Brush.verticalGradient(
-                    colors = listOf(
-                        CosmicBackground,
-                        CosmicCard,
-                        CosmicCardHover
-                    )
-                )
-            )
-    ) {
+    com.rescuemate.ui.components.CosmicScaffold { paddingValues ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .padding(paddingValues)
                 .padding(24.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.SpaceBetween
@@ -144,21 +133,12 @@ fun OnboardingScreen(
             Spacer(modifier = Modifier.weight(1f))
             
             // CTA Button
-            Button(
+            com.rescuemate.ui.components.CosmicButton(
+                text = stringResource(R.string.get_started),
                 onClick = onStart,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(56.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = CosmicPrimary
-                ),
-                shape = MaterialTheme.shapes.extraLarge
-            ) {
-                Text(
-                    text = stringResource(R.string.get_started),
-                    style = MaterialTheme.typography.labelLarge
-                )
-            }
+                modifier = Modifier.fillMaxWidth(),
+                isPrimary = true
+            )
         }
     }
 }

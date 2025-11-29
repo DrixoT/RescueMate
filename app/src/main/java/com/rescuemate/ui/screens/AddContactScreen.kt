@@ -106,27 +106,12 @@ fun AddContactScreen(
         }
     }
 
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(
-                brush = Brush.verticalGradient(
-                    colors = listOf(
-                        CosmicBackground,
-                        CosmicCard,
-                        CosmicCardHover
-                    )
-                )
-            )
-    ) {
-        Column(
-            modifier = Modifier.fillMaxSize()
-        ) {
-            // Header
+    com.rescuemate.ui.components.CosmicScaffold(
+        topBar = {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(24.dp),
+                    .padding(16.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 IconButton(onClick = onBack) {
@@ -136,17 +121,12 @@ fun AddContactScreen(
                         tint = CosmicTextPrimary
                     )
                 }
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = "Add Emergency Contact",
-                        style = MaterialTheme.typography.titleLarge,
-                        color = CosmicTextPrimary
+                Column(modifier = Modifier.weight(1f).padding(start = 8.dp)) {
+                    com.rescuemate.ui.components.CosmicHeader(
+                        text = "Add Emergency Contact"
                     )
-                    Text(
-                        text = "Expand Your Safety Network",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = CosmicTextSecondary,
-                        letterSpacing = 2.sp
+                    com.rescuemate.ui.components.CosmicSubHeader(
+                        text = "Expand Your Safety Network"
                     )
                 }
                 Icon(
@@ -156,18 +136,18 @@ fun AddContactScreen(
                     tint = CosmicPrimary
                 )
             }
-
-            // Form
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f)
-                    .verticalScroll(rememberScrollState())
-                    .padding(horizontal = 24.dp)
-                    .padding(bottom = 32.dp),
-                verticalArrangement = Arrangement.spacedBy(24.dp)
-            ) {
-                Spacer(modifier = Modifier.height(8.dp))
+        }
+    ) { paddingValues ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(paddingValues)
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 24.dp)
+                .padding(bottom = 32.dp),
+            verticalArrangement = Arrangement.spacedBy(24.dp)
+        ) {
+            Spacer(modifier = Modifier.height(8.dp))
 
                 // Primary Contact Toggle
                 Card(
@@ -441,5 +421,4 @@ fun AddContactScreen(
             }
         }
     }
-}
 

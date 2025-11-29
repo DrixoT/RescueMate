@@ -98,288 +98,239 @@ fun VoiceAISetupScreen(
         }
     }
 
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(
-                brush = Brush.verticalGradient(
-                    colors = listOf(
-                        CosmicBackground,
-                        CosmicCard,
-                        CosmicCardHover
+    com.rescuemate.ui.components.CosmicScaffold(
+        topBar = {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                IconButton(onClick = onBack) {
+                    Icon(
+                        imageVector = Icons.Default.ArrowBack,
+                        contentDescription = "Back",
+                        tint = CosmicTextPrimary
                     )
-                )
-            )
-    ) {
+                }
+                Column(modifier = Modifier.weight(1f).padding(start = 8.dp)) {
+                    com.rescuemate.ui.components.CosmicHeader(
+                        text = "Voice AI Setup"
+                    )
+                    com.rescuemate.ui.components.CosmicSubHeader(
+                        text = "Configure emergency voice assistant"
+                    )
+                }
+            }
+        }
+    ) { paddingValues ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .padding(paddingValues)
                 .verticalScroll(rememberScrollState())
+                .padding(24.dp),
+            verticalArrangement = Arrangement.spacedBy(24.dp)
         ) {
-            // Header
-            Surface(
+            // Hero Section
+            Card(
                 modifier = Modifier.fillMaxWidth(),
-                color = CosmicCard.copy(alpha = 0.8f)
+                colors = CardDefaults.cardColors(
+                    containerColor = CosmicPrimary.copy(alpha = 0.1f)
+                ),
+                border = androidx.compose.foundation.BorderStroke(1.dp, CosmicPrimary.copy(alpha = 0.3f))
             ) {
                 Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp),
+                    modifier = Modifier.padding(20.dp),
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    IconButton(onClick = onBack) {
-                        Icon(
-                            imageVector = Icons.Default.ArrowBack,
-                            contentDescription = "Back",
-                            tint = CosmicTextPrimary
-                        )
-                    }
-                    Column(modifier = Modifier.weight(1f)) {
+                    Icon(
+                        imageVector = Icons.Default.RecordVoiceOver,
+                        contentDescription = null,
+                        tint = CosmicPrimary,
+                        modifier = Modifier.size(48.dp)
+                    )
+                    Column {
                         Text(
-                            text = "Voice AI Setup",
-                            style = MaterialTheme.typography.titleLarge,
+                            text = "AI-Powered Conversational Assistant",
+                            style = MaterialTheme.typography.titleMedium,
                             color = CosmicTextPrimary,
                             fontWeight = FontWeight.Bold
                         )
+                        Spacer(modifier = Modifier.height(4.dp))
                         Text(
-                            text = "Configure emergency voice assistant",
-                            style = MaterialTheme.typography.labelSmall,
+                            text = "This app uses ElevenLabs Conversational AI for real-time voice interactions. Create an agent in your ElevenLabs dashboard to customize voice, personality, and knowledge base.",
+                            style = MaterialTheme.typography.bodySmall,
                             color = CosmicTextSecondary,
-                            letterSpacing = 1.5.sp
+                            lineHeight = 18.sp
                         )
                     }
                 }
             }
 
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(24.dp),
-                verticalArrangement = Arrangement.spacedBy(24.dp)
+            // Wake Word Settings
+            Text(
+                text = "Wake Word",
+                style = MaterialTheme.typography.titleMedium,
+                color = CosmicTextPrimary,
+                fontWeight = FontWeight.Bold
+            )
+
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(
+                    containerColor = CosmicCard
+                ),
+                border = androidx.compose.foundation.BorderStroke(1.dp, CosmicBorder)
             ) {
-                
-                // Hero Section
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(
-                        containerColor = CosmicPrimary.copy(alpha = 0.1f)
-                    ),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, CosmicPrimary.copy(alpha = 0.3f))
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     Row(
-                        modifier = Modifier.padding(20.dp),
-                        horizontalArrangement = Arrangement.spacedBy(16.dp),
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.RecordVoiceOver,
-                            contentDescription = null,
-                            tint = CosmicPrimary,
-                            modifier = Modifier.size(48.dp)
-                        )
-                        Column {
+                        Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                text = "AI-Powered Conversational Assistant",
-                                style = MaterialTheme.typography.titleMedium,
-                                color = CosmicTextPrimary,
-                                fontWeight = FontWeight.Bold
+                                text = "Voice Activation",
+                                style = MaterialTheme.typography.titleSmall,
+                                color = CosmicTextPrimary
                             )
-                            Spacer(modifier = Modifier.height(4.dp))
                             Text(
-                                text = "This app uses ElevenLabs Conversational AI for real-time voice interactions. Create an agent in your ElevenLabs dashboard to customize voice, personality, and knowledge base.",
+                                text = "Activate assistant with wake word",
                                 style = MaterialTheme.typography.bodySmall,
-                                color = CosmicTextSecondary,
-                                lineHeight = 18.sp
+                                color = CosmicTextSecondary
                             )
                         }
+                        Switch(
+                            checked = wakeWordEnabled,
+                            onCheckedChange = { wakeWordEnabled = it },
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = CosmicPrimary,
+                                checkedTrackColor = CosmicPrimary.copy(alpha = 0.5f)
+                            )
+                        )
                     }
-                }
 
-                // Wake Word Settings
-                Text(
-                    text = "Wake Word",
-                    style = MaterialTheme.typography.titleMedium,
-                    color = CosmicTextPrimary,
-                    fontWeight = FontWeight.Bold
-                )
-
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(
-                        containerColor = CosmicCard
-                    ),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, CosmicBorder)
-                ) {
-                    Column(
-                        modifier = Modifier.padding(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        Row(
+                    if (wakeWordEnabled) {
+                        com.rescuemate.ui.components.CosmicInput(
+                            value = customWakeWord,
+                            onValueChange = { customWakeWord = it },
+                            label = "Custom Wake Word",
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = "Voice Activation",
-                                    style = MaterialTheme.typography.titleSmall,
-                                    color = CosmicTextPrimary
-                                )
-                                Text(
-                                    text = "Activate assistant with wake word",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = CosmicTextSecondary
-                                )
-                            }
-                            Switch(
-                                checked = wakeWordEnabled,
-                                onCheckedChange = { wakeWordEnabled = it },
-                                colors = SwitchDefaults.colors(
-                                    checkedThumbColor = CosmicPrimary,
-                                    checkedTrackColor = CosmicPrimary.copy(alpha = 0.5f)
-                                )
-                            )
-                        }
-
-                        if (wakeWordEnabled) {
-                            OutlinedTextField(
-                                value = customWakeWord,
-                                onValueChange = { customWakeWord = it },
-                                label = { Text("Custom Wake Word") },
-                                placeholder = { Text("e.g., Hey RescueMate") },
-                                modifier = Modifier.fillMaxWidth(),
-                                colors = TextFieldDefaults.colors(
-                                    focusedContainerColor = CosmicCard,
-                                    unfocusedContainerColor = CosmicCard,
-                                    focusedIndicatorColor = CosmicPrimary,
-                                    unfocusedIndicatorColor = CosmicBorder
-                                )
-                            )
-                        }
+                            placeholder = "e.g., Hey RescueMate"
+                        )
                     }
                 }
+            }
 
-                // Voice Selection
-                Text(
-                    text = "Select Voice",
-                    style = MaterialTheme.typography.titleMedium,
-                    color = CosmicTextPrimary,
-                    fontWeight = FontWeight.Bold
-                )
+            // Voice Selection
+            Text(
+                text = "Select Voice",
+                style = MaterialTheme.typography.titleMedium,
+                color = CosmicTextPrimary,
+                fontWeight = FontWeight.Bold
+            )
 
-                Text(
-                    text = "Powered by ElevenLabs AI",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = CosmicTextSecondary,
-                    letterSpacing = 1.sp
-                )
+            Text(
+                text = "Powered by ElevenLabs AI",
+                style = MaterialTheme.typography.labelSmall,
+                color = CosmicTextSecondary,
+                letterSpacing = 1.sp
+            )
 
-                // Voice Cards with preview functionality
-                availableVoices.forEach { voice ->
-                    VoiceCard(
-                        voice = voice,
-                        isSelected = selectedVoice?.id == voice.id,
-                        isPlaying = playingVoiceId == voice.id && isPlaying,
-                        onSelect = { selectedVoice = voice },
-                        onPlay = {
-                            if (playingVoiceId == voice.id && isPlaying) {
-                                // Stop playing
-                                voiceService.stopAudio()
-                                isPlaying = false
-                                playingVoiceId = null
-                            } else {
-                                // Start playing preview
-                                isLoading = true
-                                errorMessage = null
-                                playingVoiceId = voice.id
+            // Voice Cards with preview functionality
+            availableVoices.forEach { voice ->
+                VoiceCard(
+                    voice = voice,
+                    isSelected = selectedVoice?.id == voice.id,
+                    isPlaying = playingVoiceId == voice.id && isPlaying,
+                    onSelect = { selectedVoice = voice },
+                    onPlay = {
+                        if (playingVoiceId == voice.id && isPlaying) {
+                            // Stop playing
+                            voiceService.stopAudio()
+                            isPlaying = false
+                            playingVoiceId = null
+                        } else {
+                            // Start playing preview
+                            isLoading = true
+                            errorMessage = null
+                            playingVoiceId = voice.id
 
-                                android.util.Log.d("VoiceAISetup", "Starting voice preview for: ${voice.name}")
+                            android.util.Log.d("VoiceAISetup", "Starting voice preview for: ${voice.name}")
 
-                                scope.launch {
-                                    try {
-                                        // Generate audio from text
-                                        val testMessage = "Hey! I'm ${voice.name}, I'm glad I could be of service. How can I help?"
-                                        android.util.Log.d("VoiceAISetup", "Generating audio...")
+                            scope.launch {
+                                try {
+                                    // Generate audio from text
+                                    val testMessage = "Hey! I'm ${voice.name}, I'm glad I could be of service. How can I help?"
+                                    android.util.Log.d("VoiceAISetup", "Generating audio...")
 
-                                        val audioResult = voiceService.textToSpeech(
-                                            text = testMessage,
-                                            voiceId = voice.id,
-                                            useCache = true
-                                        )
+                                    val audioResult = voiceService.textToSpeech(
+                                        text = testMessage,
+                                        voiceId = voice.id,
+                                        useCache = true
+                                    )
 
-                                        if (audioResult.isSuccess) {
-                                            val audioPath = audioResult.getOrNull()
-                                            android.util.Log.d("VoiceAISetup", "Audio generated: $audioPath")
+                                    if (audioResult.isSuccess) {
+                                        val audioPath = audioResult.getOrNull()
+                                        android.util.Log.d("VoiceAISetup", "Audio generated: $audioPath")
 
-                                            if (audioPath != null) {
-                                                // Play the audio
-                                                val playResult = voiceService.playAudio(audioPath)
+                                        if (audioPath != null) {
+                                            // Play the audio
+                                            val playResult = voiceService.playAudio(audioPath)
 
-                                                if (playResult.isSuccess) {
-                                                    isPlaying = true
-                                                    android.util.Log.d("VoiceAISetup", "Playing audio successfully")
-                                                } else {
-                                                    errorMessage = "Failed to play audio: ${playResult.exceptionOrNull()?.message}"
-                                                    android.util.Log.e("VoiceAISetup", errorMessage!!)
-                                                    playingVoiceId = null
-                                                }
+                                            if (playResult.isSuccess) {
+                                                isPlaying = true
+                                                android.util.Log.d("VoiceAISetup", "Playing audio successfully")
+                                            } else {
+                                                errorMessage = "Failed to play audio: ${playResult.exceptionOrNull()?.message}"
+                                                android.util.Log.e("VoiceAISetup", errorMessage!!)
+                                                playingVoiceId = null
                                             }
-                                        } else {
-                                            val error = audioResult.exceptionOrNull()?.message ?: "Unknown error"
-                                            errorMessage = "Failed to generate audio: $error"
-                                            android.util.Log.e("VoiceAISetup", errorMessage!!)
-                                            playingVoiceId = null
                                         }
-                                    } catch (e: Exception) {
-                                        errorMessage = "Error: ${e.message}"
-                                        android.util.Log.e("VoiceAISetup", "Exception during voice preview", e)
+                                    } else {
+                                        val error = audioResult.exceptionOrNull()?.message ?: "Unknown error"
+                                        errorMessage = "Failed to generate audio: $error"
+                                        android.util.Log.e("VoiceAISetup", errorMessage!!)
                                         playingVoiceId = null
-                                    } finally {
-                                        isLoading = false
                                     }
+                                } catch (e: Exception) {
+                                    errorMessage = "Error: ${e.message}"
+                                    android.util.Log.e("VoiceAISetup", "Exception during voice preview", e)
+                                    playingVoiceId = null
+                                } finally {
+                                    isLoading = false
                                 }
                             }
                         }
-                    )
-                }
-
-                // Action Button
-                Button(
-                    onClick = {
-                        // Save selected voice to SharedPreferences
-                        selectedVoice?.let { voice ->
-                            prefs.edit().apply {
-                                putString("selected_voice_id", voice.id)
-                                putString("selected_voice_name", voice.name)
-                                apply()
-                            }
-                        }
-                        onComplete()
-                    },
-                    enabled = selectedVoice != null,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(56.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = CosmicPrimary,
-                        disabledContainerColor = CosmicBorder
-                    ),
-                    shape = MaterialTheme.shapes.large
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Check,
-                        contentDescription = null,
-                        modifier = Modifier.size(20.dp)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = "Complete Setup",
-                        style = MaterialTheme.typography.labelLarge
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(16.dp))
+                    }
+                )
             }
+
+            // Action Button
+            com.rescuemate.ui.components.CosmicButton(
+                text = "Complete Setup",
+                onClick = {
+                    // Save selected voice to SharedPreferences
+                    selectedVoice?.let { voice ->
+                        prefs.edit().apply {
+                            putString("selected_voice_id", voice.id)
+                            putString("selected_voice_name", voice.name)
+                            apply()
+                        }
+                    }
+                    onComplete()
+                },
+                enabled = selectedVoice != null,
+                modifier = Modifier.fillMaxWidth(),
+                isPrimary = true
+            )
+
+            Spacer(modifier = Modifier.height(16.dp))
         }
     }
 }

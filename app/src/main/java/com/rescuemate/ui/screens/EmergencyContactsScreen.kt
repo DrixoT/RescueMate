@@ -51,27 +51,12 @@ fun EmergencyContactsScreen(
         }
     }
 
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(
-                brush = Brush.verticalGradient(
-                    colors = listOf(
-                        CosmicBackground,
-                        CosmicCard,
-                        CosmicCardHover
-                    )
-                )
-            )
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(24.dp)
-        ) {
-            // Header
+    com.rescuemate.ui.components.CosmicScaffold(
+        topBar = {
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 IconButton(onClick = onBack) {
@@ -81,17 +66,12 @@ fun EmergencyContactsScreen(
                         tint = CosmicTextPrimary
                     )
                 }
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = stringResource(R.string.emergency_contacts),
-                        style = MaterialTheme.typography.titleLarge,
-                        color = CosmicTextPrimary
+                Column(modifier = Modifier.weight(1f).padding(start = 8.dp)) {
+                    com.rescuemate.ui.components.CosmicHeader(
+                        text = stringResource(R.string.emergency_contacts)
                     )
-                    Text(
-                        text = stringResource(R.string.your_safety_network),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = CosmicTextSecondary,
-                        letterSpacing = 2.sp
+                    com.rescuemate.ui.components.CosmicSubHeader(
+                        text = stringResource(R.string.your_safety_network)
                     )
                 }
                 IconButton(onClick = onAddContact) {
@@ -102,9 +82,14 @@ fun EmergencyContactsScreen(
                     )
                 }
             }
-
-            Spacer(modifier = Modifier.height(24.dp))
-
+        }
+    ) { paddingValues ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(paddingValues)
+                .padding(horizontal = 24.dp)
+        ) {
             // Show loading, empty state or contacts list
             when {
                 isLoading -> {
@@ -218,26 +203,12 @@ fun EmptyContactsState(
 
         Spacer(modifier = Modifier.height(40.dp))
 
-        Button(
+        com.rescuemate.ui.components.CosmicButton(
+            text = "Add Your First Contact",
             onClick = onAddContact,
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(56.dp),
-            colors = ButtonDefaults.buttonColors(
-                containerColor = CosmicPrimary
-            )
-        ) {
-            Icon(
-                imageVector = Icons.Default.Add,
-                contentDescription = null,
-                modifier = Modifier.size(20.dp)
-            )
-            Spacer(modifier = Modifier.width(8.dp))
-            Text(
-                text = "Add Your First Contact",
-                style = MaterialTheme.typography.labelLarge
-            )
-        }
+            modifier = Modifier.fillMaxWidth(),
+            isPrimary = true
+        )
 
         Spacer(modifier = Modifier.height(24.dp))
 

@@ -22,6 +22,14 @@
           }
         },
         {
+          "client_id": "1085665199694-p5hqdk9ji8747opebk3causkeqiirnk8.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.rescuemate",
+            "certificate_hash": "7100a2699ae1cf1381a72cd7b547b4d08259c2ba"
+          }
+        },
+        {
           "client_id": "1085665199694-urhu4004f6lq8bb1hgha5vbqh06ubssp.apps.googleusercontent.com",
           "client_type": 3
         }
