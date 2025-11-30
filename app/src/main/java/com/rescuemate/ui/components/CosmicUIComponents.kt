@@ -61,6 +61,7 @@ fun GalaxyBackground(
 ) {
     var size by remember { mutableStateOf(IntSize.Zero) }
     val stars = remember { mutableStateListOf<Star>() }
+    var trigger by remember { mutableStateOf(0L) }
 
     LaunchedEffect(size) {
         if (size.width > 0 && size.height > 0) {
@@ -82,7 +83,8 @@ fun GalaxyBackground(
 
     LaunchedEffect(Unit) {
         while (isActive) {
-            withFrameNanos {
+            withFrameNanos { time ->
+                trigger = time
                 stars.forEach { star ->
                     star.x += star.speedX
                     star.y += star.speedY
@@ -104,6 +106,10 @@ fun GalaxyBackground(
             .onSizeChanged { size = it }
     ) {
         Canvas(modifier = Modifier.fillMaxSize()) {
+            // Use trigger to force redraw
+            @Suppress("UNUSED_VARIABLE")
+            val t = trigger
+            
             stars.forEach { star ->
                 drawCircle(
                     color = Color.White.copy(alpha = star.alpha),

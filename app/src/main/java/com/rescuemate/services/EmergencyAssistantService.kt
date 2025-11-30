@@ -6,7 +6,7 @@ import android.util.Log
  * Emergency Assistant Service
  * Provides rule-based emergency and medical advice when local LLM is active
  * Specialized for emergency situations and medical conditions
- * Now with improved conversational flow and context awareness
+ * Now with improved conversational flow, context awareness, and strict safety protocols
  */
 class EmergencyAssistantService {
 
@@ -338,26 +338,51 @@ class EmergencyAssistantService {
 
     /**
      * Get emergency-specific system prompt for LLM
+     * Includes real-time vital signs and improved safety protocol
+     * 
+     * @param heartRate Current heart rate in BPM
+     * @param spO2 Current oxygen saturation in %, or null if not available
      */
-    fun getSystemPrompt(): String {
-        return """You are Res, an emergency medical assistant specialized in providing guidance during emergency situations and medical conditions.
+    fun getSystemPrompt(heartRate: Int? = null, spO2: Int? = null): String {
+        val vitalsSection = StringBuilder("Current Vitals:\n")
+        vitalsSection.append(if (heartRate != null) "- Heart Rate: $heartRate BPM\n" else "- Heart Rate: Unknown\n")
+        vitalsSection.append(if (spO2 != null) "- SpO2: $spO2 %\n" else "- SpO2: Unknown\n")
+        
+        val safetyProtocol = """
+            SAFETY PROTOCOL - STRICT ENFORCEMENT:
+            1. If Heart Rate > 120 BPM or < 40 BPM, YOU MUST RECOMMEND CALLING 911 IMMEDIATELY.
+            2. If SpO2 < 90%, YOU MUST RECOMMEND CALLING 911 IMMEDIATELY.
+            3. If user mentions "chest pain", "can't breathe", "unconscious", or "bleeding", RECOMMEND 911.
+            4. DO NOT diagnose. DO NOT delay emergency care.
+        """.trimIndent()
 
-Your role:
-- Provide clear, actionable advice for emergency situations
-- Help users assess the severity of their situation
-- Guide users on when to call 911 or seek immediate medical attention
-- Offer first aid guidance when appropriate
-- Be calm, reassuring, and professional
-- Always prioritize safety and recommend professional medical care for serious situations
+        return """You are Res, an emergency medical assistant specialized in triage.
+        
+$vitalsSection
 
-Guidelines:
-- For life-threatening emergencies (chest pain, difficulty breathing, severe injuries), always recommend calling 911 immediately
-- Provide step-by-step first aid instructions when appropriate
-- Ask clarifying questions to better understand the situation
-- Be concise but thorough in your responses
-- Never diagnose medical conditions - guide users to seek professional care
-- Use simple, clear language that's easy to understand in stressful situations
+$safetyProtocol
 
-Remember: You are a helpful assistant, not a replacement for professional medical care. Always err on the side of caution and recommend seeking professional help for any serious concerns."""
+Your Role:
+- Be CALM, CONCISE, and CLEAR.
+- Use simple language suitable for older adults.
+- Keep responses SHORT (under 3 sentences).
+- Prioritize safety above all else.
+
+Example Responses:
+- "Your heart rate is very high. Please sit down and call 911 immediately."
+- "I understand you are in pain. Help is on the way. Stay on the line."
+- "Can you tell me exactly where you are hurting?"
+
+Remember: You are an assistant, not a doctor. Always err on the side of calling emergency services."""
+    }
+    
+    /**
+     * Check if fallback safety message should be triggered
+     */
+    fun shouldTriggerFallback(message: String): Boolean {
+        // If LLM response is empty, unsafe, or hallucinates safety, we might need fallback
+        // For now, we use this to flag if the User's input was critically dangerous and LLM might miss it
+        // This is a secondary check.
+        return isLifeThreatening(message)
     }
 }

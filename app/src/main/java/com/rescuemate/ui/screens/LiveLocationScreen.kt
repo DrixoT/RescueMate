@@ -39,9 +39,10 @@ fun LiveLocationScreen(
     var currentLocation by remember { mutableStateOf<LatLng?>(null) }
     var locationAddress by remember { mutableStateOf("") }
     var isLoadingLocation by remember { mutableStateOf(false) }
+    var retryTrigger by remember { mutableStateOf(0) }
 
     // Request permissions and get location
-    LaunchedEffect(locationPermissionsState.allPermissionsGranted) {
+    LaunchedEffect(locationPermissionsState.allPermissionsGranted, retryTrigger) {
         if (locationPermissionsState.allPermissionsGranted) {
             isLoadingLocation = true
             try {
@@ -222,6 +223,35 @@ fun LiveLocationScreen(
                             )
                         }
                     }
+                    // Check for missing API Key or Invalid Key (if map loads but is blank, usually key issue)
+                    com.rescuemate.BuildConfig.GOOGLE_MAPS_API_KEY.isBlank() -> {
+                         Column(
+                            modifier = Modifier.fillMaxSize(),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Warning,
+                                contentDescription = null,
+                                modifier = Modifier.size(48.dp),
+                                tint = Color.Red
+                            )
+                            Spacer(modifier = Modifier.height(16.dp))
+                            Text(
+                                text = "Google Maps API Key Missing",
+                                style = MaterialTheme.typography.titleMedium,
+                                color = CosmicTextPrimary
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                text = "Please add GOOGLE_MAPS_API_KEY to your .env or local.properties file.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = CosmicTextSecondary,
+                                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                                modifier = Modifier.padding(horizontal = 32.dp)
+                            )
+                        }
+                    }
                     currentLocation != null -> {
                         // Map display
                         GoogleMap(
@@ -336,6 +366,12 @@ fun LiveLocationScreen(
                                 text = "Unable to get location",
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = CosmicTextSecondary
+                            )
+                            Spacer(modifier = Modifier.height(16.dp))
+                            com.rescuemate.ui.components.CosmicButton(
+                                text = "Retry",
+                                onClick = { retryTrigger++ },
+                                isPrimary = false
                             )
                         }
                     }

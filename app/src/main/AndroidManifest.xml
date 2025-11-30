@@ -28,6 +28,7 @@
 
     <!-- Phone Call Permission -->
     <uses-permission android:name="android.permission.CALL_PHONE" />
+    <uses-permission android:name="android.permission.MANAGE_OWN_CALLS" />
 
     <!-- SMS Permission for messaging -->
     <uses-permission android:name="android.permission.SEND_SMS" />

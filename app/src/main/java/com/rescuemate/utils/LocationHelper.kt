@@ -34,7 +34,11 @@ class LocationHelper(private val context: Context) {
         }
 
         return try {
-            fusedLocationClient.lastLocation.awaitTask()
+            // Try to get a fresh location first
+            fusedLocationClient.getCurrentLocation(
+                Priority.PRIORITY_HIGH_ACCURACY,
+                null
+            ).awaitTask() ?: fusedLocationClient.lastLocation.awaitTask()
         } catch (_: Exception) {
             null
         }

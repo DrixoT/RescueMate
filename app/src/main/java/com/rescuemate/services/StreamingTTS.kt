@@ -17,6 +17,7 @@ import kotlinx.coroutines.withContext
  * StreamingTTS
  * Buffers tokens from LLM and speaks them in natural chunks (sentences/phrases).
  * Supports interruption and queue management.
+ * Optimized for incremental streaming with low latency.
  */
 class StreamingTTS(context: Context) {
     
@@ -95,9 +96,20 @@ class StreamingTTS(context: Context) {
     }
     
     private fun shouldSpeak(text: String): Boolean {
-        // Speak at punctuation marks or if buffer gets too long
-        val sentenceEnders = listOf(". ", "! ", "? ", ": ", "\n")
-        return sentenceEnders.any { text.endsWith(it) } || text.length > 100
+        // Speak at punctuation marks, commas (for pausing), or if buffer gets too long
+        // Tuning for faster incremental response: Split on commas and semicolons too
+        val sentenceEnders = listOf(". ", "! ", "? ", ": ", "; ", ", ", "\n")
+        
+        // Also check for end of string punctuation if it looks like a complete thought
+        val endsWithPunctuation = text.trim().let { t -> 
+            t.endsWith(".") || t.endsWith("!") || t.endsWith("?") || t.endsWith(",") 
+        }
+
+        // Limit buffer length to ensure we don't wait too long for a pause
+        val bufferLimit = 50 
+
+        return (sentenceEnders.any { text.contains(it) } && endsWithPunctuation) || 
+               text.length > bufferLimit
     }
     
     /**

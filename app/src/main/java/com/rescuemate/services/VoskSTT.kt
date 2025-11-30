@@ -13,13 +13,14 @@ import java.io.File
 /**
  * VoskSTT
  * Implements offline Speech-to-Text using Vosk-Android.
- * Handles model loading, continuous listening, and partial result callbacks.
+ * Handles model loading, continuous listening, partial result callbacks, and confidence scoring.
  */
 class VoskSTT(
     private val context: Context,
     private val onResult: (String) -> Unit,
     private val onPartialResult: ((String) -> Unit)? = null,
-    private val onError: ((String) -> Unit)? = null
+    private val onError: ((String) -> Unit)? = null,
+    private val onResultWithConfidence: ((String, Float) -> Unit)? = null
 ) {
     companion object {
         private const val TAG = "VoskSTT"
@@ -36,17 +37,47 @@ class VoskSTT(
      * Unpacks the model from assets to internal storage if needed.
      */
     fun initialize(onInitialized: (Boolean) -> Unit) {
-        StorageService.unpack(context, MODEL_NAME, "model",
-            { modelPath ->
+        StorageService.unpack(context, "models/$MODEL_NAME", "model",
+            { result ->
                 try {
-                    // modelPath can be either String or File, handle both
-                    val pathString = when (modelPath) {
-                        is String -> modelPath
-                        is File -> modelPath.absolutePath
-                        else -> modelPath.toString()
+                    // StorageService.unpack might return the Model object directly or a path
+                    if (result is Model) {
+                        Log.d(TAG, "Vosk model loaded successfully (Direct Model object)")
+                        model = result
+                        onInitialized(true)
+                        return@unpack
                     }
-                    model = Model(pathString)
-                    Log.d(TAG, "Vosk model loaded successfully from $pathString")
+
+                    // If we got here, it wasn't a Model object, so try to treat it as a path
+                    val pathString = when (result) {
+                        is String -> result
+                        is File -> result.absolutePath
+                        else -> result.toString()
+                    }
+                    
+                    // Check if the returned path ends with the model name, if not append it
+                    val fullModelPath = if (pathString.endsWith(MODEL_NAME)) {
+                        pathString
+                    } else {
+                        // Look for the specific model folder inside the unpacked path
+                        val unpackedDir = File(pathString)
+                        val modelDir = File(unpackedDir, "models/$MODEL_NAME")
+                        if (modelDir.exists()) {
+                            modelDir.absolutePath
+                        } else {
+                             // Fallback: try without "models/" prefix if structure is flat
+                            val flatModelDir = File(unpackedDir, MODEL_NAME)
+                            if (flatModelDir.exists()) {
+                                flatModelDir.absolutePath
+                            } else {
+                                pathString // Hope for the best
+                            }
+                        }
+                    }
+
+                    Log.d(TAG, "Loading Vosk model from: $fullModelPath")
+                    model = Model(fullModelPath)
+                    Log.d(TAG, "Vosk model loaded successfully")
                     onInitialized(true)
                 } catch (e: Exception) {
                     Log.e(TAG, "Failed to load Vosk model: ${e.message}")
@@ -80,18 +111,7 @@ class VoskSTT(
             
             speechService?.startListening(object : RecognitionListener {
                 override fun onResult(hypothesis: String?) {
-                    hypothesis?.let {
-                        try {
-                            val jsonObj = JSONObject(it)
-                            val text = jsonObj.optString("text", "")
-                            if (text.isNotEmpty()) {
-                                Log.d(TAG, "Result: $text")
-                                onResult(text)
-                            }
-                        } catch (e: Exception) {
-                            Log.e(TAG, "JSON parse error: ${e.message}")
-                        }
-                    }
+                    hypothesis?.let { processResult(it, isFinal = false) }
                 }
 
                 override fun onPartialResult(hypothesis: String?) {
@@ -109,18 +129,7 @@ class VoskSTT(
                 }
 
                 override fun onFinalResult(hypothesis: String?) {
-                     hypothesis?.let {
-                        try {
-                            val jsonObj = JSONObject(it)
-                            val text = jsonObj.optString("text", "")
-                            if (text.isNotEmpty()) {
-                                Log.d(TAG, "Final Result: $text")
-                                onResult(text)
-                            }
-                        } catch (e: Exception) {
-                             Log.e(TAG, "JSON parse error: ${e.message}")
-                        }
-                    }
+                     hypothesis?.let { processResult(it, isFinal = true) }
                 }
 
                 override fun onError(exception: Exception?) {
@@ -142,6 +151,36 @@ class VoskSTT(
             Log.e(TAG, "Failed to start listening: ${e.message}")
             onError?.invoke("Failed to start listening: ${e.message}")
             isListening = false
+        }
+    }
+
+    private fun processResult(jsonResult: String, isFinal: Boolean) {
+        try {
+            val jsonObj = JSONObject(jsonResult)
+            val text = jsonObj.optString("text", "")
+            
+            if (text.isNotEmpty()) {
+                // Parse confidence if available (usually in "result" array)
+                var confidence = 1.0f
+                if (jsonObj.has("result")) {
+                    val results = jsonObj.getJSONArray("result")
+                    if (results.length() > 0) {
+                        // Average confidence of words
+                        var totalConf = 0.0
+                        for (i in 0 until results.length()) {
+                            totalConf += results.getJSONObject(i).optDouble("conf", 1.0)
+                        }
+                        confidence = (totalConf / results.length()).toFloat()
+                    }
+                }
+
+                Log.d(TAG, "Result: $text (Conf: $confidence)")
+                
+                onResult(text)
+                onResultWithConfidence?.invoke(text, confidence)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "JSON parse error: ${e.message}")
         }
     }
 
@@ -169,4 +208,3 @@ class VoskSTT(
     
     fun isInitialized(): Boolean = model != null
 }
-

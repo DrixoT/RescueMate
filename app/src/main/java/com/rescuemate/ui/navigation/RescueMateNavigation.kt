@@ -186,12 +186,13 @@ fun RescueMateNavigation(
         composable(Screen.Home.route) {
             HomeDashboard(
                 onNavigate = { screen ->
-                    when (screen) {
-                        "contacts" -> navController.navigate(Screen.Contacts.route)
-                        "location" -> navController.navigate(Screen.Location.route)
-                        "settings" -> navController.navigate(Screen.Settings.route)
-                        "profile" -> navController.navigate(Screen.Profile.route)
-                        "voiceAI" -> navController.navigate(Screen.VoiceAI.route)
+                    when {
+                        screen == "contacts" -> navController.navigate(Screen.Contacts.route)
+                        screen == "location" -> navController.navigate(Screen.Location.route)
+                        screen.startsWith("settings") -> navController.navigate(screen)
+                        screen.startsWith("profile") -> navController.navigate(screen)
+                        screen == "voiceAI" -> navController.navigate(Screen.VoiceAI.route)
+                        else -> android.util.Log.w("RescueMateNavigation", "Unknown navigation route: $screen")
                     }
                 }
             )
@@ -251,12 +252,28 @@ fun RescueMateNavigation(
         }
         
         composable(
-            route = Screen.Settings.route,
+            route = "settings?mode={mode}",
+            arguments = listOf(
+                androidx.navigation.navArgument("mode") { 
+                    defaultValue = "popup" 
+                    nullable = true
+                }
+            ),
             enterTransition = {
-                slideInVertically(initialOffsetY = { 1000 }, animationSpec = tween(300)) + fadeIn()
+                val mode = initialState.arguments?.getString("mode")
+                if (mode == "swipe") {
+                    slideInHorizontally(initialOffsetX = { 1000 }, animationSpec = tween(300))
+                } else {
+                    slideInVertically(initialOffsetY = { 1000 }, animationSpec = tween(300)) + fadeIn()
+                }
             },
             exitTransition = {
-                slideOutVertically(targetOffsetY = { 1000 }, animationSpec = tween(300)) + fadeOut()
+                val mode = initialState.arguments?.getString("mode")
+                if (mode == "swipe") {
+                    slideOutHorizontally(targetOffsetX = { 1000 }, animationSpec = tween(300))
+                } else {
+                    slideOutVertically(targetOffsetY = { 1000 }, animationSpec = tween(300)) + fadeOut()
+                }
             }
         ) {
             SettingsScreen(
@@ -321,7 +338,35 @@ fun RescueMateNavigation(
             )
         }
 
-        composable(Screen.Profile.route) {
+        composable(
+            route = "profile?mode={mode}",
+            arguments = listOf(
+                androidx.navigation.navArgument("mode") { 
+                    defaultValue = "popup" 
+                    nullable = true
+                }
+            ),
+            enterTransition = {
+                val mode = targetState.arguments?.getString("mode")
+                if (mode == "swipe") {
+                    // Slide in from LEFT (negative offset)
+                    slideInHorizontally(initialOffsetX = { -1000 }, animationSpec = tween(300))
+                } else {
+                    // Pop up from bottom
+                    slideInVertically(initialOffsetY = { 1000 }, animationSpec = tween(300)) + fadeIn()
+                }
+            },
+            exitTransition = {
+                val mode = initialState.arguments?.getString("mode")
+                if (mode == "swipe") {
+                    // Slide out to LEFT
+                    slideOutHorizontally(targetOffsetX = { -1000 }, animationSpec = tween(300))
+                } else {
+                    // Slide down
+                    slideOutVertically(targetOffsetY = { 1000 }, animationSpec = tween(300)) + fadeOut()
+                }
+            }
+        ) {
             UserProfileScreen(
                 onBack = {
                     navController.popBackStack()

@@ -45,28 +45,28 @@ class UserPreferences(context: Context) {
                 putBoolean(KEY_IS_LOGGED_IN, true)
                 commit() // Use commit() for synchronous write to prevent race condition
             }
-            Log.d(TAG, "✅ User credentials saved successfully")
+            Log.d(TAG, " User credentials saved successfully")
         } catch (e: Exception) {
-            Log.e(TAG, "❌ Failed to save user credentials", e)
+            Log.e(TAG, " Failed to save user credentials", e)
             throw IllegalArgumentException("Failed to save credentials: ${e.message}", e)
         }
     }
 
     fun isLoggedIn(): Boolean {
         val loggedIn = prefs.getBoolean(KEY_IS_LOGGED_IN, false)
-        Log.d(TAG, "🔍 Checking login status: $loggedIn")
+        Log.d(TAG, " Checking login status: $loggedIn")
         return loggedIn
     }
 
     fun logout() {
-        Log.d(TAG, "🚪 Logging out user")
+        Log.d(TAG, " Logging out user")
         prefs.edit().putBoolean(KEY_IS_LOGGED_IN, false).apply()
-        Log.d(TAG, "✅ User logged out successfully")
+        Log.d(TAG, " User logged out successfully")
     }
 
     // User Profile Data
     fun saveUserProfile(name: String, age: String, gender: String, phone: String) {
-        Log.d(TAG, "💾 Saving user profile - Name: $name, Age: $age, Gender: $gender, Phone: $phone")
+        Log.d(TAG, " Saving user profile - Name: $name, Age: $age, Gender: $gender, Phone: $phone")
         try {
             // Validate required fields
             require(name.isNotBlank()) { "Name cannot be blank" }
@@ -78,16 +78,16 @@ class UserPreferences(context: Context) {
                 putString(KEY_USER_PHONE, phone.trim())
                 apply()
             }
-            Log.d(TAG, "✅ User profile saved successfully")
+            Log.d(TAG, " User profile saved successfully")
         } catch (e: Exception) {
-            Log.e(TAG, "❌ Failed to save user profile", e)
+            Log.e(TAG, " Failed to save user profile", e)
             throw IllegalArgumentException("Failed to save profile: ${e.message}", e)
         }
     }
 
     fun getUserName(): String? {
         val name = prefs.getString(KEY_USER_NAME, null)
-        Log.d(TAG, "📖 Retrieved user name: $name")
+        Log.d(TAG, " Retrieved user name: $name")
         return name
     }
 
@@ -105,7 +105,7 @@ class UserPreferences(context: Context) {
 
     // Medical Information
     fun saveMedicalInfo(medicalHistory: String, currentMedication: String, allergies: String, bloodType: String = "") {
-        Log.d(TAG, "💾 Saving medical info - History: ${medicalHistory.take(50)}..., Medication: ${currentMedication.take(30)}...")
+        Log.d(TAG, " Saving medical info - History: ${medicalHistory.take(50)}..., Medication: ${currentMedication.take(30)}...")
         prefs.edit().apply {
             putString(KEY_MEDICAL_HISTORY, medicalHistory)
             putString(KEY_CURRENT_MEDICATION, currentMedication)
@@ -113,7 +113,7 @@ class UserPreferences(context: Context) {
             putString(KEY_BLOOD_TYPE, bloodType)
             apply()
         }
-        Log.d(TAG, "✅ Medical info saved successfully")
+        Log.d(TAG, " Medical info saved successfully")
     }
 
     fun getMedicalHistory(): String? = prefs.getString(KEY_MEDICAL_HISTORY, null)
@@ -123,7 +123,7 @@ class UserPreferences(context: Context) {
 
     // User ID
     fun setUserId(userId: String) {
-        Log.d(TAG, "💾 Setting user ID: $userId")
+        Log.d(TAG, " Setting user ID: $userId")
         prefs.edit().putString(KEY_USER_ID, userId).apply()
     }
 
@@ -137,13 +137,13 @@ class UserPreferences(context: Context) {
 
     private fun generateUserId(): String {
         val userId = "user_${System.currentTimeMillis()}"
-        Log.d(TAG, "🆕 Generated new user ID: $userId")
+        Log.d(TAG, " Generated new user ID: $userId")
         return userId
     }
 
     // Onboarding
     fun setOnboardingComplete(complete: Boolean) {
-        Log.d(TAG, "💾 Setting onboarding complete: $complete")
+        Log.d(TAG, " Setting onboarding complete: $complete")
         prefs.edit().putBoolean(KEY_ONBOARDING_COMPLETE, complete).apply()
     }
 
@@ -161,9 +161,9 @@ class UserPreferences(context: Context) {
 
     // Clear all data
     fun clearAllData() {
-        Log.w(TAG, "⚠️ CLEARING ALL USER DATA")
+        Log.w(TAG, " CLEARING ALL USER DATA")
         prefs.edit().clear().apply()
-        Log.d(TAG, "✅ All data cleared")
+        Log.d(TAG, " All data cleared")
     }
 }
 

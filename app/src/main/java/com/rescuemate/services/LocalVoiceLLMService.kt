@@ -4,24 +4,33 @@ import android.content.Context
 import android.speech.tts.TextToSpeech
 import android.util.Log
 import com.rescuemate.ai.TinyLlamaInferenceService
+import com.rescuemate.emergency.EmergencyConstants
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import java.util.Locale
+import kotlin.coroutines.resume
 
 /**
  * LocalVoiceLLMService
  * Provides local voice conversation using streaming TinyLlama and Vosk STT.
  * Implements streaming pipeline: Voice -> STT -> LLM Stream -> TTS Stream
+ * 
+ * Features:
+ * - Real-time Vitals Integration (HR, SpO2)
+ * - Safety Protocol Enforcement
+ * - Confidence-based fallback
  */
 class LocalVoiceLLMService(private val context: Context) {
 
     companion object {
         private const val TAG = "LocalVoiceLLM"
+        private const val LOW_CONFIDENCE_THRESHOLD = 0.7f
     }
 
     // Components
@@ -96,30 +105,37 @@ class LocalVoiceLLMService(private val context: Context) {
             }
 
             // 4. Initialize Vosk STT
-            // Vosk initialization is async, we'll wrap it
-            // Note: VoskSTT.initialize callback might be on a background thread
-            // We wait for the user to start conversation to fully activate Vosk listening
-            voskSTT = VoskSTT(
-                context = context,
-                onResult = { text ->
-                    handleUserSpeech(text)
-                },
-                onPartialResult = { partial ->
-                    handlePartialSpeech(partial)
-                },
-                onError = { error ->
-                    Log.e(TAG, "STT Error: $error")
-                    callbacks?.onError("Speech Error: $error")
+            // Use suspendCancellableCoroutine to wait for initialization
+            val voskInitialized = suspendCancellableCoroutine<Boolean> { continuation ->
+                voskSTT = VoskSTT(
+                    context = context,
+                    onResult = { text ->
+                        // Standard callback (legacy support)
+                    },
+                    onPartialResult = { partial ->
+                        handlePartialSpeech(partial)
+                    },
+                    onError = { error ->
+                        Log.e(TAG, "STT Error: $error")
+                        callbacks?.onError("Speech Error: $error")
+                    },
+                    onResultWithConfidence = { text, confidence ->
+                        handleUserSpeech(text, confidence)
+                    }
+                )
+                
+                voskSTT?.initialize { success ->
+                    if (continuation.isActive) {
+                        continuation.resume(success)
+                    }
                 }
-            )
+            }
             
-            // Trigger Vosk model loading
-            voskSTT?.initialize { success ->
-                if (!success) {
-                    Log.e(TAG, "Vosk initialization failed")
-                } else {
-                    Log.d(TAG, "Vosk initialized")
-                }
+            if (!voskInitialized) {
+                Log.e(TAG, "Vosk initialization failed")
+                return false
+            } else {
+                Log.d(TAG, "Vosk initialized successfully")
             }
             
             isInitialized = true
@@ -201,14 +217,24 @@ class LocalVoiceLLMService(private val context: Context) {
     }
 
     /**
-     * Handle complete user speech
+     * Handle complete user speech with confidence score
      */
-    private fun handleUserSpeech(text: String) {
+    private fun handleUserSpeech(text: String, confidence: Float = 1.0f) {
         if (!isActive || isProcessing) return
         if (text.isBlank()) return
 
-        Log.d(TAG, "User said: $text")
+        Log.d(TAG, "User said: $text (Conf: $confidence)")
         callbacks?.onMessage("user", text)
+        
+        // Low confidence check
+        if (confidence < LOW_CONFIDENCE_THRESHOLD) {
+            val clarificationMsg = "I didn't quite catch that. Could you please repeat?"
+            callbacks?.onMessage("agent", clarificationMsg)
+            callbacks?.onModeChange("speaking")
+            streamingTTS?.speakToken(clarificationMsg)
+            streamingTTS?.speakFinal()
+            return
+        }
         
         // Stop listening while processing/speaking
         stopListening()
@@ -217,6 +243,15 @@ class LocalVoiceLLMService(private val context: Context) {
 
         scope.launch(Dispatchers.IO) {
             try {
+                // 1. Fetch latest vitals
+                val prefs = context.getSharedPreferences(EmergencyConstants.PREF_NAME_EMERGENCY, Context.MODE_PRIVATE)
+                val currentHeartRate = prefs.getInt("current_heart_rate", 0).takeIf { it > 0 }
+                // Assuming SpO2 might be stored similarly or unavailable
+                val currentSpO2: Int? = null // Placeholder until SpO2 integration is confirmed
+
+                // 2. Construct Context-Aware Prompt
+                val systemPrompt = emergencyAssistant.getSystemPrompt(currentHeartRate, currentSpO2)
+                
                 // Generate response stream
                 val responseBuilder = StringBuilder()
                 
@@ -226,7 +261,7 @@ class LocalVoiceLLMService(private val context: Context) {
                 }
                 
                 // Stream tokens from LLM -> TTS
-                streamingLLM?.generateResponse(text) { token ->
+                streamingLLM?.generateResponse(text, systemPrompt) { token ->
                     responseBuilder.append(token)
                     streamingTTS?.speakToken(token)
                 }
@@ -237,8 +272,19 @@ class LocalVoiceLLMService(private val context: Context) {
                 val fullResponse = responseBuilder.toString()
                 Log.d(TAG, "Full response: $fullResponse")
                 
+                // 3. Safety Fallback Check
+                if (emergencyAssistant.shouldTriggerFallback(text)) {
+                    // If user mentioned critical keywords, ensure safety message is present
+                    if (!fullResponse.lowercase().contains("911") && !fullResponse.lowercase().contains("emergency")) {
+                        val safetyMsg = " Please call 911 immediately."
+                        responseBuilder.append(safetyMsg)
+                        streamingTTS?.speakToken(safetyMsg)
+                        streamingTTS?.speakFinal()
+                    }
+                }
+                
                 withContext(Dispatchers.Main) {
-                    callbacks?.onMessage("agent", fullResponse)
+                    callbacks?.onMessage("agent", responseBuilder.toString())
                 }
                 
                 // Wait a bit before listening again (avoid picking up self)

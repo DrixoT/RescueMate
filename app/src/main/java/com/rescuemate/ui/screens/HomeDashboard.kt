@@ -12,6 +12,7 @@ import androidx.compose.animation.core.*
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
@@ -235,10 +236,37 @@ fun HomeDashboard(
     }
     
     CosmicScaffold { paddingValues ->
+        var totalDrag by remember { mutableStateOf(0f) }
+        var hasNavigated by remember { mutableStateOf(false) }
+
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
+                .pointerInput(Unit) {
+                    detectHorizontalDragGestures(
+                        onDragEnd = { 
+                            totalDrag = 0f 
+                            hasNavigated = false
+                        },
+                        onDragCancel = { 
+                            totalDrag = 0f 
+                            hasNavigated = false
+                        }
+                    ) { change, dragAmount ->
+                        change.consume()
+                        if (!hasNavigated) {
+                            totalDrag += dragAmount
+                            if (totalDrag < -100) { // Right to Left -> Settings
+                                onNavigate("settings?mode=swipe")
+                                hasNavigated = true
+                            } else if (totalDrag > 100) { // Left to Right -> Profile
+                                onNavigate("profile?mode=swipe")
+                                hasNavigated = true
+                            }
+                        }
+                    }
+                }
         ) {
             Column(
                 modifier = Modifier
@@ -263,14 +291,25 @@ fun HomeDashboard(
                             color = if (isMonitoringActive) Color(0xFF4CAF50) else CosmicTextSecondary
                         )
                     }
-                    IconButton(
-                        onClick = { onNavigate("settings") }
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Settings,
-                            contentDescription = stringResource(R.string.settings),
-                            tint = CosmicTextPrimary
-                        )
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        IconButton(
+                            onClick = { onNavigate("profile?mode=popup") }
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Person,
+                                contentDescription = stringResource(R.string.profile),
+                                tint = CosmicTextPrimary
+                            )
+                        }
+                        IconButton(
+                            onClick = { onNavigate("settings?mode=popup") }
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Settings,
+                                contentDescription = stringResource(R.string.settings),
+                                tint = CosmicTextPrimary
+                            )
+                        }
                     }
                 }
 
@@ -340,7 +379,10 @@ fun HomeDashboard(
                     PlanetarySOSButton(
                         onClick = { /* Handled by hold/tap */ },
                         onTap = {
-                            if (isVoiceConversationActive) {
+                            val isConnecting = conversationStatus == "connecting"
+                            val isActive = isVoiceConversationActive || conversationalService?.isActive() == true || isConnecting
+
+                            if (isActive) {
                                 conversationalService?.endConversation()
                                 isVoiceConversationActive = false
                                 conversationStatus = ""
@@ -371,6 +413,7 @@ fun HomeDashboard(
                                     if (!hasPermission) {
                                         recordAudioLauncher.launch(Manifest.permission.RECORD_AUDIO)
                                     } else {
+                                        conversationStatus = "connecting" // Set status immediately to prevent double-tap
                                         scope.launch {
                                             startVoiceConversation(
                                                 context = context,
@@ -642,10 +685,11 @@ fun PlanetarySOSButton(
                  )
             } else {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(
-                        text = "SOS",
-                        style = AsciiLarge.copy(fontSize = 32.sp, fontWeight = FontWeight.Bold),
-                        color = Color.White
+                    Icon(
+                        painter = androidx.compose.ui.res.painterResource(id = R.drawable.ic_shield_outline),
+                        contentDescription = "SOS",
+                        tint = Color.White,
+                        modifier = Modifier.size(64.dp)
                     )
                     Text(
                         text = "HOLD",

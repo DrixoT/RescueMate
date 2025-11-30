@@ -9,25 +9,26 @@ import java.io.File
 
 /**
  * TinyLlama Inference Service
- * Helper for managing the TinyLlama model file.
- * Actual inference is now handled by StreamingLLM.
+ * Helper for managing the TinyLlama model file and running offline inference.
+ * Uses StreamingLLM JNI backend for actual generation.
  */
 class TinyLlamaInferenceService(private val context: Context) {
 
     companion object {
         private const val TAG = "TinyLlamaInference"
-        private const val MODEL_NAME = "TinyLlama-1.1B-Chat-v0.4.Q4_K_M.gguf"
+        private const val MODEL_NAME = "TinyLlama-1.1B-Chat-v0.4-Q4_K_M.gguf"
     }
 
     private var modelPath: String? = null
     private var isInitialized = false
+    private var streamingLLM: StreamingLLM? = null
 
     /**
      * Initialize and ensure model file is ready.
      */
     suspend fun initialize(): Boolean = withContext(Dispatchers.IO) {
         try {
-            if (isInitialized && modelPath != null) {
+            if (isInitialized && modelPath != null && streamingLLM?.isReady() == true) {
                 return@withContext true
             }
 
@@ -41,9 +42,19 @@ class TinyLlamaInferenceService(private val context: Context) {
             modelPath = copyModelFromAssets()
             
             if (modelPath != null && File(modelPath!!).exists()) {
-                isInitialized = true
-                Log.d(TAG, "Model prepared at: $modelPath")
-                return@withContext true
+                // Initialize StreamingLLM instance for offline analysis
+                if (streamingLLM == null) {
+                    streamingLLM = StreamingLLM(modelPath!!)
+                }
+                
+                if (streamingLLM!!.initialize()) {
+                    isInitialized = true
+                    Log.d(TAG, "Model prepared and loaded at: $modelPath")
+                    return@withContext true
+                } else {
+                    Log.e(TAG, "Failed to load model into memory")
+                    return@withContext false
+                }
             } else {
                 Log.e(TAG, "Failed to prepare model file")
                 return@withContext false
@@ -87,10 +98,37 @@ class TinyLlamaInferenceService(private val context: Context) {
 
     fun getModelPath(): String? = modelPath
 
-    // Deprecated methods maintained for compatibility if referenced elsewhere
-    suspend fun generateHealthAnalysis(prompt: String, maxTokens: Int = 256): String? {
-        // This would need to be implemented via StreamingLLM non-streaming mode if needed
-        return "Health analysis requires streaming implementation update."
+    /**
+     * Generate health analysis using the offline model.
+     * Returns the raw response string (expected to be JSON).
+     */
+    suspend fun generateHealthAnalysis(prompt: String, maxTokens: Int = 256): String? = withContext(Dispatchers.Default) {
+        if (!isInitialized || streamingLLM == null) {
+            Log.e(TAG, "Service not initialized")
+            return@withContext null
+        }
+
+        try {
+            val systemPrompt = """You are a medical AI assistant. Analyze the provided vital signs.
+Respond ONLY with a valid JSON object in this exact format:
+{
+  "isAbnormal": boolean,
+  "riskScore": float (0.0-1.0),
+  "alertReason": "string",
+  "recommendedAction": "string",
+  "confidence": float (0.0-1.0),
+  "trendAnalysis": "string"
+}
+Do not include markdown formatting or extra text."""
+
+            return@withContext streamingLLM?.generateFullResponse(
+                userInput = prompt,
+                systemPrompt = systemPrompt
+            )
+        } catch (e: Exception) {
+            Log.e(TAG, "Error generating health analysis", e)
+            return@withContext null
+        }
     }
     
     suspend fun generateConversation(
@@ -102,6 +140,8 @@ class TinyLlamaInferenceService(private val context: Context) {
     }
 
     fun shutdown() {
-        // Nothing to clean up here, model file remains
+        streamingLLM?.cleanup()
+        streamingLLM = null
+        isInitialized = false
     }
 }
