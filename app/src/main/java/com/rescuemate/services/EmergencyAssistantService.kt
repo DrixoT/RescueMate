@@ -12,7 +12,7 @@ class EmergencyAssistantService {
 
     companion object {
         private const val TAG = "EmergencyAssistant"
-        private const val GREETING = "Hey I'm Res, How can I help you?"
+        private const val GREETING = "Hey I'm Res, How's your day?"
     }
 
     /**

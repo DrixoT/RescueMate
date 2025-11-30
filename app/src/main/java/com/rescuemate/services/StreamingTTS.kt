@@ -131,12 +131,21 @@ class StreamingTTS(context: Context) {
     fun stop() {
         ttsQueue.clear()
         tokenBuffer.clear()
-        tts?.stop()
+        try {
+            tts?.stop()
+        } catch (e: Exception) {
+            Log.e(TAG, "Error stopping TTS: ${e.message}")
+        }
     }
     
     fun shutdown() {
         stop()
-        tts?.shutdown()
+        try {
+            tts?.shutdown()
+        } catch (e: Exception) {
+             Log.e(TAG, "Error shutting down TTS: ${e.message}")
+        }
+        tts = null
     }
     
     fun isSpeaking(): Boolean {
