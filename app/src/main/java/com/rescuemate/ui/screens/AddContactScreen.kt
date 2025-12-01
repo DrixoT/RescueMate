@@ -36,6 +36,7 @@ fun AddContactScreen(
     var relationship by remember { mutableStateOf("") }
     var phone by remember { mutableStateOf("") }
     var email by remember { mutableStateOf("") }
+    var notificationPref by remember { mutableStateOf(EmergencyContact.NotificationPreference.ALL) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var isLoading by remember { mutableStateOf(false) }
 
@@ -81,7 +82,8 @@ fun AddContactScreen(
             relationship = relationship,
             email = email.trim().ifBlank { null },
             isPrimaryContact = isPrimary,
-            priority = if (isPrimary) 1 else 2
+            priority = if (isPrimary) 1 else 2,
+            notificationPreference = notificationPref
         )
 
         Log.d("AddContactScreen", "📞 Contact object created: $contact")
@@ -318,6 +320,65 @@ fun AddContactScreen(
                         singleLine = true,
                         isError = errorMessage?.contains("email", ignoreCase = true) == true
                     )
+
+                    // Notification Preference Dropdown
+                    var prefExpanded by remember { mutableStateOf(false) }
+                    Box(modifier = Modifier.fillMaxWidth()) {
+                        OutlinedTextField(
+                            value = when(notificationPref) {
+                                EmergencyContact.NotificationPreference.ALL -> "All (Voice + SMS + Email)"
+                                EmergencyContact.NotificationPreference.VOICE_SMS -> "Voice & SMS"
+                                EmergencyContact.NotificationPreference.SMS_ONLY -> "SMS Only"
+                                EmergencyContact.NotificationPreference.VOICE_ONLY -> "Voice Call Only"
+                            },
+                            onValueChange = {},
+                            label = { Text("Notification Method") },
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = textFieldColors(),
+                            readOnly = true,
+                            trailingIcon = {
+                                IconButton(onClick = { prefExpanded = true }) {
+                                    Icon(
+                                        imageVector = Icons.Default.ArrowDropDown,
+                                        contentDescription = null
+                                    )
+                                }
+                            }
+                        )
+                        DropdownMenu(
+                            expanded = prefExpanded,
+                            onDismissRequest = { prefExpanded = false }
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("All (Voice + SMS + Email)") },
+                                onClick = {
+                                    notificationPref = EmergencyContact.NotificationPreference.ALL
+                                    prefExpanded = false
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Voice & SMS") },
+                                onClick = {
+                                    notificationPref = EmergencyContact.NotificationPreference.VOICE_SMS
+                                    prefExpanded = false
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("SMS Only") },
+                                onClick = {
+                                    notificationPref = EmergencyContact.NotificationPreference.SMS_ONLY
+                                    prefExpanded = false
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Voice Call Only") },
+                                onClick = {
+                                    notificationPref = EmergencyContact.NotificationPreference.VOICE_ONLY
+                                    prefExpanded = false
+                                }
+                            )
+                        }
+                    }
 
                     // Info Box
                     Card(

@@ -314,6 +314,48 @@ fun ContactCard(
                             color = CosmicTextPrimary.copy(alpha = 0.7f)
                         )
                     }
+
+                    // Notification Preference Indicators
+                    Row(
+                        modifier = Modifier.padding(top = 4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        if (contact.canReceiveVoiceCall()) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    imageVector = Icons.Default.Phone,
+                                    contentDescription = "Voice",
+                                    modifier = Modifier.size(12.dp),
+                                    tint = CosmicPrimary
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = "Voice",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = CosmicTextSecondary,
+                                    fontSize = 10.sp
+                                )
+                            }
+                        }
+                        if (contact.canReceiveSMS()) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    imageVector = Icons.Default.Message,
+                                    contentDescription = "SMS",
+                                    modifier = Modifier.size(12.dp),
+                                    tint = CosmicPrimary
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = "SMS",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = CosmicTextSecondary,
+                                    fontSize = 10.sp
+                                )
+                            }
+                        }
+                    }
                 }
 
                 // Delete button
