@@ -1,5 +1,11 @@
 package com.rescuemate.ui.screens
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.result.PickVisualMediaRequest
+import coil.compose.AsyncImage
+import kotlinx.coroutines.launch
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -50,9 +56,31 @@ fun UserProfileScreen(
     val context = androidx.compose.ui.platform.LocalContext.current
     val userPrefs = remember { com.rescuemate.data.UserPreferences(context) }
     val scope = rememberCoroutineScope()
+    val firestoreRepo = remember { com.rescuemate.data.repository.FirestoreRepository() }
 
     // Load existing data
     var name by remember { mutableStateOf(userPrefs.getUserName() ?: "") }
+    var photoUrl by remember { mutableStateOf(userPrefs.getProfilePhotoUrl()) }
+    
+    val photoPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia()
+    ) { uri ->
+        if (uri != null) {
+            scope.launch {
+                try {
+                    android.widget.Toast.makeText(context, "Uploading photo...", android.widget.Toast.LENGTH_SHORT).show()
+                    val url = firestoreRepo.uploadProfilePhoto(uri)
+                    photoUrl = url
+                    userPrefs.saveProfilePhotoUrl(url)
+                    android.widget.Toast.makeText(context, "Photo updated successfully", android.widget.Toast.LENGTH_SHORT).show()
+                } catch (e: Exception) {
+                    android.util.Log.e("UserProfileScreen", "Error uploading photo", e)
+                    android.widget.Toast.makeText(context, "Failed to upload photo", android.widget.Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+    }
+
     var dateOfBirth by remember { mutableStateOf(userPrefs.getDateOfBirth() ?: "") }
     var age by remember { mutableStateOf(userPrefs.getUserAge() ?: "") }
     var sex by remember { mutableStateOf(userPrefs.getUserGender() ?: "") }
@@ -214,16 +242,27 @@ fun UserProfileScreen(
                         border = androidx.compose.foundation.BorderStroke(2.dp, CosmicPrimary)
                     ) {
                         Box(contentAlignment = Alignment.Center) {
-                            Icon(
-                                imageVector = Icons.Default.Person,
-                                contentDescription = null,
-                                modifier = Modifier.size(50.dp),
-                                tint = CosmicTextPrimary
-                            )
+                            if (photoUrl != null) {
+                                AsyncImage(
+                                    model = photoUrl,
+                                    contentDescription = "Profile Photo",
+                                    modifier = Modifier.fillMaxSize(),
+                                    contentScale = androidx.compose.ui.layout.ContentScale.Crop
+                                )
+                            } else {
+                                Icon(
+                                    imageVector = Icons.Default.Person,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(50.dp),
+                                    tint = CosmicTextPrimary
+                                )
+                            }
                         }
                     }
                     Spacer(modifier = Modifier.height(12.dp))
-                    TextButton(onClick = { /* Change photo */ }) {
+                    TextButton(onClick = { 
+                        photoPickerLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                    }) {
                         Text("Change Photo", color = CosmicPrimary)
                     }
                 }

@@ -26,15 +26,17 @@ import com.rescuemate.ui.theme.*
 @Composable
 fun AddContactScreen(
     onBack: () -> Unit,
-    onSave: () -> Unit
+    onSave: () -> Unit,
+    initialName: String = "",
+    initialPhone: String = ""
 ) {
     val context = LocalContext.current
     val repository = remember { EmergencyRepository(context) }
 
     var isPrimary by remember { mutableStateOf(false) }
-    var name by remember { mutableStateOf("") }
+    var name by remember { mutableStateOf(initialName) }
     var relationship by remember { mutableStateOf("") }
-    var phone by remember { mutableStateOf("") }
+    var phone by remember { mutableStateOf(initialPhone) }
     var email by remember { mutableStateOf("") }
     var notificationPref by remember { mutableStateOf(EmergencyContact.NotificationPreference.ALL) }
     var errorMessage by remember { mutableStateOf<String?>(null) }

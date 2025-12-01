@@ -219,28 +219,50 @@ fun RescueMateNavigation(
                 onBack = {
                     navController.popBackStack()
                 },
-                onAddContact = {
-                    navController.navigate(Screen.AddContact.route)
+                onAddContact = { name, phone ->
+                    val route = if (name.isNullOrBlank() && phone.isNullOrBlank()) {
+                        // Standard route for manual entry
+                        "addContact"
+                    } else {
+                        // Route with pre-filled data
+                        "addContact?name=${name ?: ""}&phone=${phone ?: ""}"
+                    }
+                    navController.navigate(route)
                 }
             )
         }
         
         composable(
             route = Screen.AddContact.route,
+            arguments = listOf(
+                androidx.navigation.navArgument("name") { 
+                    defaultValue = ""
+                    nullable = true
+                },
+                androidx.navigation.navArgument("phone") { 
+                    defaultValue = ""
+                    nullable = true
+                }
+            ),
             enterTransition = {
                 slideInVertically(initialOffsetY = { 1000 }, animationSpec = tween(300)) + fadeIn()
             },
             exitTransition = {
                 slideOutVertically(targetOffsetY = { 1000 }, animationSpec = tween(300)) + fadeOut()
             }
-        ) {
+        ) { backStackEntry ->
+            val name = backStackEntry.arguments?.getString("name") ?: ""
+            val phone = backStackEntry.arguments?.getString("phone") ?: ""
+            
             AddContactScreen(
                 onBack = {
                     navController.popBackStack()
                 },
                 onSave = {
                     navController.popBackStack()
-                }
+                },
+                initialName = name,
+                initialPhone = phone
             )
         }
         

@@ -8,7 +8,7 @@ sealed class Screen(val route: String) {
     object PhoneLogin : Screen("phoneLogin")
     object Home : Screen("home")
     object Contacts : Screen("contacts")
-    object AddContact : Screen("addContact")
+    object AddContact : Screen("addContact?name={name}&phone={phone}")
     object Location : Screen("location")
     object Settings : Screen("settings")
     object Bluetooth : Screen("bluetooth")

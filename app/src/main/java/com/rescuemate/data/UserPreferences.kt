@@ -30,6 +30,7 @@ class UserPreferences(context: Context) {
         private const val KEY_IS_LOGGED_IN = "is_logged_in"
         private const val KEY_ONBOARDING_COMPLETE = "onboarding_complete"
         private const val KEY_USER_ID = "user_id"
+        private const val KEY_PROFILE_PHOTO_URL = "profile_photo_url"
     }
 
     // User Authentication
@@ -95,6 +96,13 @@ class UserPreferences(context: Context) {
     fun getUserGender(): String? = prefs.getString(KEY_USER_GENDER, null)
     fun getUserPhone(): String? = prefs.getString(KEY_USER_PHONE, null)
     fun getUserEmail(): String? = prefs.getString(KEY_USER_EMAIL, null)
+
+    fun saveProfilePhotoUrl(url: String) {
+        Log.d(TAG, "Saving profile photo URL: $url")
+        prefs.edit().putString(KEY_PROFILE_PHOTO_URL, url).apply()
+    }
+
+    fun getProfilePhotoUrl(): String? = prefs.getString(KEY_PROFILE_PHOTO_URL, null)
 
     fun saveDateOfBirth(dateOfBirth: String) {
         Log.d(TAG, "Saving date of birth: $dateOfBirth")

@@ -48,6 +48,7 @@ fun SetupWizardScreen(
     val userPrefs = remember { UserPreferences(context) }
     val firestoreRepo = remember { FirestoreRepository() }
     val authRepo = remember { AuthRepository(context) }
+    val emergencyRepo = remember { com.rescuemate.data.repository.EmergencyRepository(context) }
 
     // Get current Firebase user to pre-fill name if logged in via Google
     val currentUser = authRepo.getCurrentUser()
@@ -239,8 +240,9 @@ fun SetupWizardScreen(
                             relationship = contactRelation,
                             isPrimaryContact = true
                         )
-                        firestoreRepo.saveContact(contact)
-                        Log.d("SetupWizardScreen", "Emergency contact synced to Firestore")
+                        // Save contact using EmergencyRepository (handles local DB + Firestore sync)
+                        emergencyRepo.addContact(contact)
+                        Log.d("SetupWizardScreen", "Emergency contact saved via Repository")
                     } catch (firestoreError: Exception) {
                         // Log but don't fail - local data is saved
                         Log.w("SetupWizardScreen", "Firestore sync failed (will retry later)", firestoreError)

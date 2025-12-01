@@ -1,6 +1,9 @@
 package com.rescuemate.ui.screens
 
 import android.util.Log
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -12,28 +15,63 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import com.journeyapps.barcodescanner.ScanContract
+import com.journeyapps.barcodescanner.ScanOptions
 import com.rescuemate.R
+import com.rescuemate.data.UserPreferences
 import com.rescuemate.data.repository.EmergencyRepository
 import com.rescuemate.emergency.data.EmergencyContact
 import com.rescuemate.ui.theme.*
-
+import com.rescuemate.utils.QRCodeUtils
+import org.json.JSONObject
 
 @Composable
 fun EmergencyContactsScreen(
     onBack: () -> Unit,
-    onAddContact: () -> Unit
+    onAddContact: (String?, String?) -> Unit
 ) {
     val context = LocalContext.current
     val repository = remember { EmergencyRepository(context) }
+    val userPrefs = remember { UserPreferences(context) }
 
     // Use mutableStateOf instead of mutableStateListOf for better reactivity
     var contacts by remember { mutableStateOf<List<EmergencyContact>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
+
+    // Dialog States
+    var showAddMethodDialog by remember { mutableStateOf(false) }
+    var showMyQRDialog by remember { mutableStateOf(false) }
+
+    // QR Code Scanner Launcher
+    val scanLauncher = rememberLauncherForActivityResult(
+        contract = ScanContract()
+    ) { result ->
+        if (result.contents != null) {
+            try {
+                val json = JSONObject(result.contents)
+                val name = json.optString("name", "")
+                val phone = json.optString("phone", "")
+                if (name.isNotEmpty() && phone.isNotEmpty()) {
+                    Log.d("EmergencyContactsScreen", "✅ QR Scanned: $name, $phone")
+                    onAddContact(name, phone)
+                } else {
+                    Toast.makeText(context, "Invalid QR Code format", Toast.LENGTH_SHORT).show()
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+                Toast.makeText(context, "Error parsing QR Code", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
 
     // Load contacts when screen appears
     LaunchedEffect(Unit) {
@@ -74,7 +112,18 @@ fun EmergencyContactsScreen(
                         text = stringResource(R.string.your_safety_network)
                     )
                 }
-                IconButton(onClick = onAddContact) {
+                
+                // My QR Code Button
+                IconButton(onClick = { showMyQRDialog = true }) {
+                    Icon(
+                        imageVector = Icons.Default.QrCode,
+                        contentDescription = "My QR Code",
+                        tint = CosmicPrimary
+                    )
+                }
+                
+                // Add Contact Button (Triggers Dialog)
+                IconButton(onClick = { showAddMethodDialog = true }) {
                     Icon(
                         imageVector = Icons.Default.Add,
                         contentDescription = "Add Contact",
@@ -101,7 +150,9 @@ fun EmergencyContactsScreen(
                     }
                 }
                 contacts.isEmpty() -> {
-                    EmptyContactsState(onAddContact = onAddContact)
+                    EmptyContactsState(
+                        onAddContact = { showAddMethodDialog = true }
+                    )
                 }
                 else -> {
                     Log.d("EmergencyContactsScreen", "📋 Displaying ${contacts.size} contacts")
@@ -122,6 +173,14 @@ fun EmergencyContactsScreen(
                                         // Refresh list
                                         contacts = repository.getAllContacts()
                                         Log.d("EmergencyContactsScreen", "✅ Contact deleted, list refreshed")
+                                    }
+                                },
+                                onUpdate = { updatedContact ->
+                                    Log.d("EmergencyContactsScreen", "🔄 Update requested for: ${updatedContact.name}")
+                                    val success = repository.addContact(updatedContact)
+                                    if (success) {
+                                        contacts = repository.getAllContacts()
+                                        Log.d("EmergencyContactsScreen", "✅ Contact updated")
                                     }
                                 }
                             )
@@ -156,6 +215,211 @@ fun EmergencyContactsScreen(
                                 color = CosmicTextPrimary
                             )
                         }
+                    }
+                }
+            }
+        }
+    }
+
+    // Add Contact Method Dialog
+    if (showAddMethodDialog) {
+        AlertDialog(
+            onDismissRequest = { showAddMethodDialog = false },
+            title = { 
+                Text(
+                    "Add Emergency Contact",
+                    style = MaterialTheme.typography.titleLarge,
+                    color = CosmicTextPrimary
+                ) 
+            },
+            text = { 
+                Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                    Text(
+                        "Choose how you want to add a new contact:",
+                        color = CosmicTextSecondary
+                    )
+                    
+                    // Scan QR Option
+                    Card(
+                        onClick = { 
+                            showAddMethodDialog = false
+                            val options = ScanOptions()
+                            options.setDesiredBarcodeFormats(ScanOptions.QR_CODE)
+                            options.setPrompt("Scan Emergency Contact QR Code")
+                            options.setBeepEnabled(true)
+                            scanLauncher.launch(options)
+                        },
+                        colors = CardDefaults.cardColors(containerColor = CosmicCard),
+                        border = CardDefaults.outlinedCardBorder().copy(
+                            brush = Brush.linearGradient(listOf(CosmicBorder, CosmicBorder))
+                        )
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(16.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.QrCodeScanner,
+                                contentDescription = null,
+                                tint = CosmicPrimary,
+                                modifier = Modifier.size(32.dp)
+                            )
+                            Column {
+                                Text(
+                                    "Scan QR Code",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    color = CosmicTextPrimary,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    "Scan another user's code",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = CosmicTextSecondary
+                                )
+                            }
+                        }
+                    }
+                    
+                    // Manual Entry Option
+                    Card(
+                        onClick = { 
+                            showAddMethodDialog = false
+                            onAddContact(null, null)
+                        },
+                        colors = CardDefaults.cardColors(containerColor = CosmicCard),
+                        border = CardDefaults.outlinedCardBorder().copy(
+                            brush = Brush.linearGradient(listOf(CosmicBorder, CosmicBorder))
+                        )
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(16.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Edit,
+                                contentDescription = null,
+                                tint = CosmicPrimary,
+                                modifier = Modifier.size(32.dp)
+                            )
+                            Column {
+                                Text(
+                                    "Enter Manually",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    color = CosmicTextPrimary,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    "Type name and phone number",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = CosmicTextSecondary
+                                )
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(onClick = { showAddMethodDialog = false }) {
+                    Text("Cancel", color = CosmicTextSecondary)
+                }
+            },
+            containerColor = CosmicBackground,
+            textContentColor = CosmicTextPrimary
+        )
+    }
+
+    // My QR Code Dialog
+    if (showMyQRDialog) {
+        val userName = userPrefs.getUserName() ?: "Unknown User"
+        val userPhone = userPrefs.getUserPhone() ?: ""
+        
+        // Create JSON content
+        val qrContent = JSONObject().apply {
+            put("name", userName)
+            put("phone", userPhone)
+            put("type", "emergency_contact_share")
+        }.toString()
+
+        Dialog(onDismissRequest = { showMyQRDialog = false }) {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                shape = MaterialTheme.shapes.large,
+                colors = CardDefaults.cardColors(containerColor = CosmicCard),
+                border = CardDefaults.outlinedCardBorder().copy(
+                    brush = Brush.linearGradient(listOf(CosmicBorder, CosmicBorder))
+                )
+            ) {
+                Column(
+                    modifier = Modifier.padding(24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text(
+                        text = "My Contact QR",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = CosmicTextPrimary
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = "Let others scan this to add you as an emergency contact.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = CosmicTextSecondary,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    
+                    Spacer(modifier = Modifier.height(24.dp))
+                    
+                    // QR Code Image
+                    val bitmap = remember(qrContent) {
+                        QRCodeUtils.generateQRCode(qrContent)
+                    }
+                    
+                    if (bitmap != null) {
+                        Box(
+                            modifier = Modifier
+                                .background(Color.White)
+                                .padding(16.dp)
+                        ) {
+                            Image(
+                                bitmap = bitmap.asImageBitmap(),
+                                contentDescription = "QR Code",
+                                modifier = Modifier.size(200.dp)
+                            )
+                        }
+                    }
+                    
+                    Spacer(modifier = Modifier.height(16.dp))
+                    
+                    Text(
+                        text = userName,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = CosmicTextPrimary
+                    )
+                    Text(
+                        text = userPhone,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = CosmicTextSecondary
+                    )
+                    
+                    Spacer(modifier = Modifier.height(24.dp))
+                    
+                    Button(
+                        onClick = { showMyQRDialog = false },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.buttonColors(containerColor = CosmicPrimary)
+                    ) {
+                        Text("Close")
                     }
                 }
             }
@@ -256,9 +520,11 @@ fun EmptyContactsState(
 fun ContactCard(
     contact: EmergencyContact,
     modifier: Modifier = Modifier,
-    onDelete: () -> Unit = {}
+    onDelete: () -> Unit = {},
+    onUpdate: (EmergencyContact) -> Unit = {}
 ) {
     var showDeleteDialog by remember { mutableStateOf(false) }
+    var isPreferenceExpanded by remember { mutableStateOf(false) }
 
     Card(
         modifier = modifier,
@@ -321,38 +587,75 @@ fun ContactCard(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        if (contact.canReceiveVoiceCall()) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(
-                                    imageVector = Icons.Default.Phone,
-                                    contentDescription = "Voice",
-                                    modifier = Modifier.size(12.dp),
-                                    tint = CosmicPrimary
+                        // Preference Dropdown
+                        Box {
+                            FilterChip(
+                                selected = true,
+                                onClick = { isPreferenceExpanded = true },
+                                label = {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        val (icon, text) = when (contact.notificationPreference) {
+                                            EmergencyContact.NotificationPreference.ALL -> Icons.Default.NotificationsActive to "All"
+                                            EmergencyContact.NotificationPreference.VOICE_SMS -> Icons.Default.PermPhoneMsg to "Voice & SMS"
+                                            EmergencyContact.NotificationPreference.SMS_ONLY -> Icons.Default.Message to "SMS Only"
+                                            EmergencyContact.NotificationPreference.VOICE_ONLY -> Icons.Default.Phone to "Voice Only"
+                                        }
+                                        Icon(
+                                            imageVector = icon,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(14.dp),
+                                            tint = CosmicPrimary
+                                        )
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text(
+                                            text = text,
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = CosmicTextSecondary,
+                                            fontSize = 10.sp
+                                        )
+                                        Icon(
+                                            imageVector = Icons.Default.ArrowDropDown,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(14.dp),
+                                            tint = CosmicTextSecondary
+                                        )
+                                    }
+                                },
+                                colors = FilterChipDefaults.filterChipColors(
+                                    selectedContainerColor = CosmicCardHover,
+                                    selectedLabelColor = CosmicTextPrimary
+                                ),
+                                border = FilterChipDefaults.filterChipBorder(
+                                    enabled = true,
+                                    selected = true,
+                                    borderColor = CosmicBorder
                                 )
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text(
-                                    text = "Voice",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = CosmicTextSecondary,
-                                    fontSize = 10.sp
-                                )
-                            }
-                        }
-                        if (contact.canReceiveSMS()) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(
-                                    imageVector = Icons.Default.Message,
-                                    contentDescription = "SMS",
-                                    modifier = Modifier.size(12.dp),
-                                    tint = CosmicPrimary
-                                )
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text(
-                                    text = "SMS",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = CosmicTextSecondary,
-                                    fontSize = 10.sp
-                                )
+                            )
+                            
+                            DropdownMenu(
+                                expanded = isPreferenceExpanded,
+                                onDismissRequest = { isPreferenceExpanded = false },
+                                modifier = Modifier.background(CosmicCard)
+                            ) {
+                                EmergencyContact.NotificationPreference.values().forEach { pref ->
+                                    DropdownMenuItem(
+                                        text = { 
+                                            Text(
+                                                when (pref) {
+                                                    EmergencyContact.NotificationPreference.ALL -> "All (Voice, SMS, Email)"
+                                                    EmergencyContact.NotificationPreference.VOICE_SMS -> "Voice & SMS"
+                                                    EmergencyContact.NotificationPreference.SMS_ONLY -> "SMS Only"
+                                                    EmergencyContact.NotificationPreference.VOICE_ONLY -> "Voice Only"
+                                                },
+                                                color = CosmicTextPrimary
+                                            ) 
+                                        },
+                                        onClick = {
+                                            onUpdate(contact.copy(notificationPreference = pref))
+                                            isPreferenceExpanded = false
+                                        }
+                                    )
+                                }
                             }
                         }
                     }
@@ -458,4 +761,3 @@ fun ContactCard(
         )
     }
 }
-

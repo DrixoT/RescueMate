@@ -156,7 +156,7 @@ fun EmergencyContactManagementScreen(
                         
                         // Quick Action Buttons for Empty State
                         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                            Button(onClick = onAddContact) {
+                        Button(onClick = onAddContact) {
                                 Text("Add Manually")
                             }
                             
