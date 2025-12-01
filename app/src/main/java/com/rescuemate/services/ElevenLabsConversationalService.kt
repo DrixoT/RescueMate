@@ -7,6 +7,7 @@ import androidx.core.content.ContextCompat
 import com.rescuemate.BuildConfig
 import com.rescuemate.utils.ErrorHandler
 import com.rescuemate.utils.NetworkMonitor
+import com.rescuemate.emergency.data.InteractionLogManager
 import io.elevenlabs.ConversationClient
 import io.elevenlabs.ConversationConfig
 import io.elevenlabs.ConversationSession
@@ -40,6 +41,11 @@ class ElevenLabsConversationalService(private val context: Context) {
     private val networkMonitor = NetworkMonitor(context)
     private val localVoiceLLMService = LocalVoiceLLMService(context)
     private var usingLocalFallback = false
+    
+    // Logging
+    private val interactionLogManager = InteractionLogManager(context)
+    private val transcriptBuilder = StringBuilder()
+    private var currentUserId: String = "unknown_user"
 
     /**
      * Callbacks for conversation events
@@ -87,8 +93,12 @@ class ElevenLabsConversationalService(private val context: Context) {
     fun startConversation(
         agentId: String = AGENT_ID,
         voiceId: String? = null,
+        userId: String? = null,
         callbacks: ConversationCallbacks
     ) {
+        // Set user ID for logging
+        userId?.let { currentUserId = it }
+        
         // Check microphone permission
         if (ContextCompat.checkSelfPermission(
                 context,
@@ -125,6 +135,9 @@ class ElevenLabsConversationalService(private val context: Context) {
         Log.d(TAG, "Network: Available ✓ - Using ElevenLabs (Primary Service)")
         Log.d(TAG, "Local LLM will only be used if network is lost during conversation")
         
+        // Reset transcript
+        transcriptBuilder.clear()
+        
         if (voiceId != null && voiceId.isNotBlank()) {
             Log.w(TAG, "⚠️ Voice override not supported in SDK 0.4.0")
             Log.w(TAG, "   Please configure voice in ElevenLabs agent dashboard")
@@ -150,6 +163,12 @@ class ElevenLabsConversationalService(private val context: Context) {
                 },
                 onMessage = { source, message ->
                     Log.d(TAG, "💬 Message from $source: ${message.take(100)}${if (message.length > 100) "..." else ""}")
+                    
+                    // Accumulate transcript
+                    if (message.isNotBlank()) {
+                        transcriptBuilder.append("$source: $message\n")
+                    }
+                    
                     callbacks.onMessage(source, message)
                 },
                 onModeChange = { mode ->
@@ -443,6 +462,13 @@ class ElevenLabsConversationalService(private val context: Context) {
         try {
                 conversationSession?.endSession()
                 Log.d(TAG, "✓ Conversation ended")
+                
+                // Save log
+                val transcript = transcriptBuilder.toString()
+                if (transcript.isNotBlank()) {
+                    interactionLogManager.saveLog(currentUserId, transcript, "ONLINE")
+                }
+                
         } catch (e: Exception) {
                 Log.e(TAG, "Error ending conversation", e)
             } finally {

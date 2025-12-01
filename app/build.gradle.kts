@@ -158,6 +158,10 @@ dependencies {
     // Biometric Authentication
     implementation("androidx.biometric:biometric:1.1.0")
 
+    // QR Code Scanning & Generation
+    implementation("com.google.zxing:core:3.5.3")
+    implementation("com.journeyapps:zxing-android-embedded:4.3.0")
+
     // Firebase
     implementation(platform("com.google.firebase:firebase-bom:33.7.0"))
     implementation("com.google.firebase:firebase-auth")

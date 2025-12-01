@@ -4,6 +4,7 @@ import android.content.Context
 import android.speech.tts.TextToSpeech
 import android.util.Log
 import com.rescuemate.ai.TinyLlamaInferenceService
+import com.rescuemate.emergency.data.InteractionLogManager
 import com.rescuemate.emergency.EmergencyConstants
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -34,11 +35,15 @@ class LocalVoiceLLMService(private val context: Context) {
     }
 
     // Components
-    private val tinyLlamaService = TinyLlamaInferenceService(context) // Helper for model file management
+    private val tinyLlamaService = TinyLlamaInferenceService.getInstance(context)
     private var voskSTT: VoskSTT? = null
-    private var streamingLLM: StreamingLLM? = null
     private var streamingTTS: StreamingTTS? = null
     private val emergencyAssistant = EmergencyAssistantService()
+    
+    // Logging
+    private val interactionLogManager = InteractionLogManager(context)
+    private val transcriptBuilder = StringBuilder()
+    private var currentUserId: String = "unknown_user"
     
     // State
     private var isInitialized = false
@@ -80,31 +85,21 @@ class LocalVoiceLLMService(private val context: Context) {
             
             // 1. Initialize TTS (needs time)
             streamingTTS = StreamingTTS(context)
+            val ttsInitialized = streamingTTS?.initialize() ?: false
+            if (!ttsInitialized) {
+                Log.e(TAG, "Failed to initialize TTS")
+                return false
+            }
             
-            // 2. Prepare LLM Model file (using existing service logic)
-            // This copies the asset to internal storage if needed
+            // 2. Initialize Shared TinyLlama Service
+            // This manages the model file and the shared native instance
             val modelReady = tinyLlamaService.initialize()
             if (!modelReady) {
-                Log.e(TAG, "Failed to prepare TinyLlama model file")
+                Log.e(TAG, "Failed to initialize TinyLlama service")
                 return false
             }
             
-            val modelPath = tinyLlamaService.getModelPath()
-            if (modelPath == null) {
-                Log.e(TAG, "Model path is null despite initialization")
-                return false
-            }
-            
-            // 3. Initialize Streaming LLM (JNI)
-            streamingLLM = StreamingLLM(modelPath)
-            if (!streamingLLM!!.initialize()) {
-                Log.w(TAG, "StreamingLLM JNI init failed - check log for native errors")
-                // We continue only if we want to support text fallback, but for voice mode this is critical
-                // Return false if strict, or true to allow fallback
-                return false 
-            }
-
-            // 4. Initialize Vosk STT
+            // 3. Initialize Vosk STT
             // Use suspendCancellableCoroutine to wait for initialization
             val voskInitialized = suspendCancellableCoroutine<Boolean> { continuation ->
                 voskSTT = VoskSTT(
@@ -152,8 +147,10 @@ class LocalVoiceLLMService(private val context: Context) {
      */
     fun startConversation(
         systemPrompt: String? = null,
+        userId: String? = null,
         callbacks: ConversationCallbacks
     ) {
+        userId?.let { currentUserId = it }
         if (isActive) {
             callbacks.onError("Conversation already active")
             return
@@ -179,6 +176,11 @@ class LocalVoiceLLMService(private val context: Context) {
             // Initial greeting
             val greeting = emergencyAssistant.getGreeting()
             callbacks.onMessage("agent", greeting)
+            
+            // Clear and start transcript
+            transcriptBuilder.clear()
+            transcriptBuilder.append("agent: $greeting\n")
+            
             callbacks.onModeChange("speaking")
             
             // Speak greeting
@@ -225,6 +227,7 @@ class LocalVoiceLLMService(private val context: Context) {
 
         Log.d(TAG, "User said: $text (Conf: $confidence)")
         callbacks?.onMessage("user", text)
+        transcriptBuilder.append("user: $text\n")
         
         // Low confidence check
         if (confidence < LOW_CONFIDENCE_THRESHOLD) {
@@ -260,8 +263,8 @@ class LocalVoiceLLMService(private val context: Context) {
                     callbacks?.onModeChange("speaking")
                 }
                 
-                // Stream tokens from LLM -> TTS
-                streamingLLM?.generateResponse(text, systemPrompt) { token ->
+                // Stream tokens from Shared LLM Service -> TTS
+                tinyLlamaService.generateResponseStream(text, systemPrompt) { token ->
                     responseBuilder.append(token)
                     streamingTTS?.speakToken(token)
                 }
@@ -271,6 +274,7 @@ class LocalVoiceLLMService(private val context: Context) {
                 
                 val fullResponse = responseBuilder.toString()
                 Log.d(TAG, "Full response: $fullResponse")
+                transcriptBuilder.append("agent: $fullResponse\n")
                 
                 // 3. Safety Fallback Check
                 if (emergencyAssistant.shouldTriggerFallback(text)) {
@@ -312,6 +316,12 @@ class LocalVoiceLLMService(private val context: Context) {
         isActive = false
         stopListening()
         streamingTTS?.stop()
+        
+        val transcript = transcriptBuilder.toString()
+        if (transcript.isNotBlank()) {
+            interactionLogManager.saveLog(currentUserId, transcript, "OFFLINE")
+        }
+        
         callbacks?.onDisconnect()
         callbacks = null
     }
@@ -320,7 +330,7 @@ class LocalVoiceLLMService(private val context: Context) {
         endConversation()
         voskSTT?.cleanup()
         streamingTTS?.shutdown()
-        streamingLLM?.cleanup()
+        // Do NOT shut down tinyLlamaService here as it is a shared singleton
         scope.cancel()
     }
     

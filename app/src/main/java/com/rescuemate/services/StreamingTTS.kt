@@ -12,6 +12,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlin.coroutines.resume
 
 /**
  * StreamingTTS
@@ -19,7 +21,7 @@ import kotlinx.coroutines.withContext
  * Supports interruption and queue management.
  * Optimized for incremental streaming with low latency.
  */
-class StreamingTTS(context: Context) {
+class StreamingTTS(private val context: Context) {
     
     companion object {
         private const val TAG = "StreamingTTS"
@@ -28,33 +30,42 @@ class StreamingTTS(context: Context) {
     private var tts: TextToSpeech? = null
     private val tokenBuffer = StringBuilder()
     private var isInitialized = false
-    private var onInitListener: ((Boolean) -> Unit)? = null
     
     // Queue for parallel processing
     private val ttsQueue = LinkedBlockingQueue<String>()
     private val scope = CoroutineScope(Dispatchers.Default)
 
-    init {
-        tts = TextToSpeech(context) { status ->
-            if (status == TextToSpeech.SUCCESS) {
-                tts?.let {
-                    it.language = Locale.US
-                    it.setSpeechRate(1.1f) // Slightly faster for conversational feel
+    suspend fun initialize(): Boolean = suspendCancellableCoroutine { continuation ->
+        if (isInitialized) {
+            continuation.resume(true)
+            return@suspendCancellableCoroutine
+        }
+        
+        try {
+            tts = TextToSpeech(context) { status ->
+                if (status == TextToSpeech.SUCCESS) {
+                    tts?.let {
+                        it.language = Locale.US
+                        it.setSpeechRate(1.1f) // Slightly faster for conversational feel
 
-                    it.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
-                        override fun onStart(utteranceId: String?) {}
-                        override fun onDone(utteranceId: String?) {}
-                        override fun onError(utteranceId: String?) {}
-                    })
+                        it.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
+                            override fun onStart(utteranceId: String?) {}
+                            override fun onDone(utteranceId: String?) {}
+                            override fun onError(utteranceId: String?) {}
+                        })
+                    }
+                    isInitialized = true
+                    Log.d(TAG, "TTS Initialized")
+                    startQueueProcessor()
+                    if (continuation.isActive) continuation.resume(true)
+                } else {
+                    Log.e(TAG, "TTS Initialization failed")
+                    if (continuation.isActive) continuation.resume(false)
                 }
-                isInitialized = true
-                onInitListener?.invoke(true)
-                Log.d(TAG, "TTS Initialized")
-                startQueueProcessor()
-            } else {
-                Log.e(TAG, "TTS Initialization failed")
-                onInitListener?.invoke(false)
             }
+        } catch (e: Exception) {
+             Log.e(TAG, "TTS init crashed", e)
+             if (continuation.isActive) continuation.resume(false)
         }
     }
 
@@ -65,7 +76,12 @@ class StreamingTTS(context: Context) {
                     val sentence = ttsQueue.take() // Blocks until item available
                     if (sentence.isNotBlank()) {
                          withContext(Dispatchers.Main) {
-                            tts?.speak(sentence, TextToSpeech.QUEUE_ADD, null, UUID.randomUUID().toString())
+                            try {
+                                tts?.speak(sentence, TextToSpeech.QUEUE_ADD, null, UUID.randomUUID().toString())
+                            } catch (e: Exception) {
+                                Log.e(TAG, "Error speaking: ${e.message}")
+                                isInitialized = false
+                            }
                         }
                     }
                 } catch (e: InterruptedException) {
@@ -131,7 +147,17 @@ class StreamingTTS(context: Context) {
     fun stop() {
         ttsQueue.clear()
         tokenBuffer.clear()
-        tts?.stop()
+        try {
+            if (isInitialized && tts != null) {
+                tts?.stop()
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error stopping TTS", e)
+            // If stop fails, it might be dead
+            if (e.message?.contains("DeadObject") == true) {
+                isInitialized = false
+            }
+        }
     }
     
     fun shutdown() {
@@ -140,6 +166,15 @@ class StreamingTTS(context: Context) {
     }
     
     fun isSpeaking(): Boolean {
-        return tts?.isSpeaking ?: false
+        return try {
+            if (!isInitialized || tts == null) return false
+            tts?.isSpeaking ?: false
+        } catch (e: Exception) {
+            Log.w(TAG, "isSpeaking failed: ${e.message}") // Changed to warning
+            if (e.message?.contains("DeadObject") == true) {
+                 isInitialized = false
+            }
+            false
+        }
     }
 }

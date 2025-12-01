@@ -179,5 +179,30 @@ class FirestoreRepository {
             throw e
         }
     }
+
+    // ================== Interaction Logs ==================
+
+    suspend fun saveInteractionLog(log: com.rescuemate.emergency.data.InteractionLog) {
+        val logMap = hashMapOf(
+            "id" to log.id,
+            "userId" to log.userId,
+            "timestamp" to log.timestamp,
+            "summary" to log.summary,
+            "transcript" to log.transcript,
+            "type" to log.type,
+            "syncedAt" to System.currentTimeMillis()
+        )
+
+        try {
+            db.collection("users").document(userId)
+                .collection("logs").document(log.id)
+                .set(logMap, SetOptions.merge())
+                .await()
+            Log.d("FirestoreRepo", "Interaction log saved to Firestore")
+        } catch (e: Exception) {
+            Log.e("FirestoreRepo", "Error saving interaction log", e)
+            throw e
+        }
+    }
 }
 

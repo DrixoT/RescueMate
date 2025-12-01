@@ -43,7 +43,7 @@ class HealthMonitoringService(private val context: Context) {
         .build()
     
     // TinyLlama - PRIMARY LLM (local, offline, private)
-    private val tinyLlamaService = TinyLlamaInferenceService(context)
+    private val tinyLlamaService = TinyLlamaInferenceService.getInstance(context)
     private var isTinyLlamaInitialized = false
     
     // Cache for LLM responses to avoid redundant calls

@@ -16,5 +16,6 @@ sealed class Screen(val route: String) {
     object VoiceAI : Screen("voiceAI")
     object PermissionRequest : Screen("permissionRequest")
     object SetupWizard : Screen("setupWizard")
+    object Logs : Screen("logs")
 }
 

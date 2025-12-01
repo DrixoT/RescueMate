@@ -108,7 +108,7 @@ object EmergencyConstants {
 
     // Database
     const val DATABASE_NAME = "emergency_sos_db"
-    const val DATABASE_VERSION = 1
+    const val DATABASE_VERSION = 2
 
     // Error Messages
     const val ERROR_NO_EMERGENCY_CONTACTS = "No emergency contacts configured"

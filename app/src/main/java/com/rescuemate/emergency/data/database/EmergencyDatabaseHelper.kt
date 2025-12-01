@@ -89,6 +89,15 @@ class EmergencyDatabaseHelper(context: Context) : SQLiteOpenHelper(
         private const val COL_RESPONSE_TIMESTAMP = "timestamp"
         private const val COL_RESPONSE_NOTES = "notes"
         private const val COL_RESPONSE_SOURCE = "response_source"
+
+        // Interaction Logs Table
+        private const val TABLE_LOGS = "interaction_logs"
+        private const val COL_LOG_ID = "id"
+        private const val COL_LOG_USER_ID = "user_id"
+        private const val COL_LOG_TIMESTAMP = "timestamp"
+        private const val COL_LOG_SUMMARY = "summary"
+        private const val COL_LOG_TRANSCRIPT = "transcript"
+        private const val COL_LOG_TYPE = "type"
     }
 
     override fun onCreate(db: SQLiteDatabase) {
@@ -175,11 +184,25 @@ class EmergencyDatabaseHelper(context: Context) : SQLiteOpenHelper(
             )
         """)
 
+        // Create Interaction Logs Table
+        db.execSQL("""
+            CREATE TABLE $TABLE_LOGS (
+                $COL_LOG_ID TEXT PRIMARY KEY,
+                $COL_LOG_USER_ID TEXT NOT NULL,
+                $COL_LOG_TIMESTAMP INTEGER NOT NULL,
+                $COL_LOG_SUMMARY TEXT,
+                $COL_LOG_TRANSCRIPT TEXT,
+                $COL_LOG_TYPE TEXT
+            )
+        """)
+
         // Create Indexes
         db.execSQL("CREATE INDEX idx_events_user_id ON $TABLE_EVENTS($COL_EVENT_USER_ID)")
         db.execSQL("CREATE INDEX idx_events_status ON $TABLE_EVENTS($COL_EVENT_STATUS)")
         db.execSQL("CREATE INDEX idx_attempts_event_id ON $TABLE_ATTEMPTS($COL_ATTEMPT_EVENT_ID)")
         db.execSQL("CREATE INDEX idx_responses_event_id ON $TABLE_RESPONSES($COL_RESPONSE_EVENT_ID)")
+        db.execSQL("CREATE INDEX idx_logs_user_id ON $TABLE_LOGS($COL_LOG_USER_ID)")
+        db.execSQL("CREATE INDEX idx_logs_timestamp ON $TABLE_LOGS($COL_LOG_TIMESTAMP)")
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
@@ -189,8 +212,19 @@ class EmergencyDatabaseHelper(context: Context) : SQLiteOpenHelper(
         try {
             when {
                 oldVersion < 2 -> {
-                    // Future migration for version 2
-                    // Example: db.execSQL("ALTER TABLE $TABLE_CONTACTS ADD COLUMN new_column TEXT")
+                    // Version 2: Add Interaction Logs table
+                    db.execSQL("""
+                        CREATE TABLE IF NOT EXISTS $TABLE_LOGS (
+                            $COL_LOG_ID TEXT PRIMARY KEY,
+                            $COL_LOG_USER_ID TEXT NOT NULL,
+                            $COL_LOG_TIMESTAMP INTEGER NOT NULL,
+                            $COL_LOG_SUMMARY TEXT,
+                            $COL_LOG_TRANSCRIPT TEXT,
+                            $COL_LOG_TYPE TEXT
+                        )
+                    """)
+                    db.execSQL("CREATE INDEX IF NOT EXISTS idx_logs_user_id ON $TABLE_LOGS($COL_LOG_USER_ID)")
+                    db.execSQL("CREATE INDEX IF NOT EXISTS idx_logs_timestamp ON $TABLE_LOGS($COL_LOG_TIMESTAMP)")
                 }
                 // Add more migration cases as needed
             }
@@ -513,6 +547,70 @@ class EmergencyDatabaseHelper(context: Context) : SQLiteOpenHelper(
             Result.success(result)
         } catch (e: Exception) {
             Log.e(TAG, "Error updating event status: $eventId", e)
+            Result.failure(e)
+        }
+    }
+
+    // Interaction Log Operations
+    fun insertInteractionLog(log: InteractionLog): Result<Long> {
+        return try {
+            val db = writableDatabase
+            val values = ContentValues().apply {
+                put(COL_LOG_ID, log.id)
+                put(COL_LOG_USER_ID, log.userId)
+                put(COL_LOG_TIMESTAMP, log.timestamp)
+                put(COL_LOG_SUMMARY, log.summary)
+                put(COL_LOG_TRANSCRIPT, log.transcript)
+                put(COL_LOG_TYPE, log.type)
+            }
+            val result = db.insertWithOnConflict(TABLE_LOGS, null, values, SQLiteDatabase.CONFLICT_REPLACE)
+            if (result == -1L) {
+                Result.failure(Exception("Failed to insert interaction log"))
+            } else {
+                Result.success(result)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error inserting interaction log: ${log.id}", e)
+            Result.failure(e)
+        }
+    }
+
+    fun getInteractionLogs(userId: String, limit: Int = 50, offset: Int = 0): Result<List<InteractionLog>> {
+        return try {
+            val logs = mutableListOf<InteractionLog>()
+            val db = readableDatabase
+            val cursor = db.query(
+                TABLE_LOGS,
+                null,
+                "$COL_LOG_USER_ID = ?",
+                arrayOf(userId),
+                null,
+                null,
+                "$COL_LOG_TIMESTAMP DESC",
+                "$offset,$limit"
+            )
+
+            cursor.use {
+                while (it.moveToNext()) {
+                    try {
+                        logs.add(
+                            InteractionLog(
+                                id = it.getString(it.getColumnIndexOrThrow(COL_LOG_ID)),
+                                userId = it.getString(it.getColumnIndexOrThrow(COL_LOG_USER_ID)),
+                                timestamp = it.getLong(it.getColumnIndexOrThrow(COL_LOG_TIMESTAMP)),
+                                summary = it.getString(it.getColumnIndexOrThrow(COL_LOG_SUMMARY)),
+                                transcript = it.getString(it.getColumnIndexOrThrow(COL_LOG_TRANSCRIPT)),
+                                type = it.getString(it.getColumnIndexOrThrow(COL_LOG_TYPE))
+                            )
+                        )
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error parsing interaction log", e)
+                    }
+                }
+            }
+            Result.success(logs)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error getting interaction logs", e)
             Result.failure(e)
         }
     }

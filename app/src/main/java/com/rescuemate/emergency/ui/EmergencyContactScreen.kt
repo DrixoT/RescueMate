@@ -1,5 +1,7 @@
 package com.rescuemate.emergency.ui
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -13,11 +15,18 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import com.journeyapps.barcodescanner.ScanContract
+import com.journeyapps.barcodescanner.ScanOptions
+import com.rescuemate.data.UserPreferences
 import com.rescuemate.emergency.data.EmergencyContact
 import com.rescuemate.emergency.data.database.EmergencyDatabaseHelper
+import com.rescuemate.utils.QRCodeUtils
+import org.json.JSONObject
 
 /**
  * Emergency Contact Management Screen
@@ -30,12 +39,59 @@ fun EmergencyContactManagementScreen(
 ) {
     val context = LocalContext.current
     val dbHelper = remember { EmergencyDatabaseHelper(context) }
+    val userPrefs = remember { UserPreferences(context) }
     var contacts by remember { mutableStateOf<List<EmergencyContact>>(emptyList()) }
     var showDeleteDialog by remember { mutableStateOf<EmergencyContact?>(null) }
+    var showQRDialog by remember { mutableStateOf(false) }
+    
+    // State for handling scanned data
+    var scannedData by remember { mutableStateOf<Pair<String, String>?>(null) }
+    var showAddContactDialog by remember { mutableStateOf(false) }
+
+    // QR Code Scanner Launcher
+    val scanLauncher = rememberLauncherForActivityResult(
+        contract = ScanContract()
+    ) { result ->
+        if (result.contents != null) {
+            try {
+                val json = JSONObject(result.contents)
+                val name = json.optString("name", "")
+                val phone = json.optString("phone", "")
+                if (name.isNotEmpty() && phone.isNotEmpty()) {
+                    scannedData = name to phone
+                    showAddContactDialog = true
+                } else {
+                    // Handle invalid format
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
 
     LaunchedEffect(Unit) {
         val result = dbHelper.getAllContacts()
         contacts = result.getOrNull() ?: emptyList()
+    }
+
+    // If we are showing the add contact dialog (triggered by scan), render it here
+    if (showAddContactDialog) {
+        AddEmergencyContactScreen(
+            onNavigateBack = { 
+                showAddContactDialog = false 
+                scannedData = null
+            },
+            onContactAdded = {
+                // Refresh list
+                val result = dbHelper.getAllContacts()
+                contacts = result.getOrNull() ?: emptyList()
+                showAddContactDialog = false
+                scannedData = null
+            },
+            initialName = scannedData?.first ?: "",
+            initialPhone = scannedData?.second ?: ""
+        )
+        return
     }
 
     Scaffold(
@@ -48,6 +104,22 @@ fun EmergencyContactManagementScreen(
                     }
                 },
                 actions = {
+                    // Scan QR Code
+                    IconButton(onClick = {
+                        val options = ScanOptions()
+                        options.setDesiredBarcodeFormats(ScanOptions.QR_CODE)
+                        options.setPrompt("Scan Emergency Contact QR Code")
+                        options.setBeepEnabled(true)
+                        scanLauncher.launch(options)
+                    }) {
+                        Icon(Icons.Default.QrCodeScanner, "Scan QR")
+                    }
+                    
+                    // Show My QR Code
+                    IconButton(onClick = { showQRDialog = true }) {
+                        Icon(Icons.Default.QrCode, "My QR")
+                    }
+
                     IconButton(onClick = onAddContact) {
                         Icon(Icons.Default.Add, "Add Contact")
                     }
@@ -80,9 +152,25 @@ fun EmergencyContactManagementScreen(
                             text = "No emergency contacts added",
                             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
                         )
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Button(onClick = onAddContact) {
-                            Text("Add First Contact")
+                        Spacer(modifier = Modifier.height(16.dp))
+                        
+                        // Quick Action Buttons for Empty State
+                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            Button(onClick = onAddContact) {
+                                Text("Add Manually")
+                            }
+                            
+                            OutlinedButton(onClick = {
+                                val options = ScanOptions()
+                                options.setDesiredBarcodeFormats(ScanOptions.QR_CODE)
+                                options.setPrompt("Scan Emergency Contact QR Code")
+                                options.setBeepEnabled(true)
+                                scanLauncher.launch(options)
+                            }) {
+                                Icon(Icons.Default.QrCodeScanner, null, modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.width(8.dp))
+                                Text("Scan QR")
+                            }
                         }
                     }
                 }
@@ -99,6 +187,80 @@ fun EmergencyContactManagementScreen(
                             onDelete = { showDeleteDialog = contact },
                             onEdit = { /* TODO: Navigate to edit */ }
                         )
+                    }
+                }
+            }
+        }
+    }
+
+    // My QR Code Dialog
+    if (showQRDialog) {
+        val userName = userPrefs.getUserName() ?: "Unknown User"
+        val userPhone = userPrefs.getUserPhone() ?: ""
+        
+        // Create JSON content
+        val qrContent = JSONObject().apply {
+            put("name", userName)
+            put("phone", userPhone)
+            put("type", "emergency_contact_share")
+        }.toString()
+
+        Dialog(onDismissRequest = { showQRDialog = false }) {
+            Card(
+                modifier = Modifier.fillMaxWidth().padding(16.dp),
+                shape = MaterialTheme.shapes.large
+            ) {
+                Column(
+                    modifier = Modifier.padding(24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text(
+                        text = "Share Contact Info",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = "Others can scan this to add you as an emergency contact.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    
+                    Spacer(modifier = Modifier.height(24.dp))
+                    
+                    // QR Code Image
+                    val bitmap = remember(qrContent) {
+                        QRCodeUtils.generateQRCode(qrContent)
+                    }
+                    
+                    if (bitmap != null) {
+                        Image(
+                            bitmap = bitmap.asImageBitmap(),
+                            contentDescription = "QR Code",
+                            modifier = Modifier.size(200.dp)
+                        )
+                    }
+                    
+                    Spacer(modifier = Modifier.height(16.dp))
+                    
+                    Text(
+                        text = userName,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = userPhone,
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    
+                    Spacer(modifier = Modifier.height(24.dp))
+                    
+                    Button(
+                        onClick = { showQRDialog = false },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Close")
                     }
                 }
             }
@@ -264,7 +426,9 @@ fun EmergencyContactCard(
 @Composable
 fun AddEmergencyContactScreen(
     onNavigateBack: () -> Unit = {},
-    onContactAdded: () -> Unit = {}
+    onContactAdded: () -> Unit = {},
+    initialName: String = "",
+    initialPhone: String = ""
 ) {
     val context = LocalContext.current
     val dbHelper = remember { EmergencyDatabaseHelper(context) }
@@ -273,12 +437,18 @@ fun AddEmergencyContactScreen(
     var errorMessage by remember { mutableStateOf("") }
     var showErrorDialog by remember { mutableStateOf(false) }
 
-    var name by remember { mutableStateOf("") }
-    var phoneNumber by remember { mutableStateOf("") }
+    var name by remember { mutableStateOf(initialName) }
+    var phoneNumber by remember { mutableStateOf(initialPhone) }
     var relationship by remember { mutableStateOf("Select") }
     var priority by remember { mutableStateOf("1") }
     var isPrimary by remember { mutableStateOf(false) }
     var notificationPref by remember { mutableStateOf(EmergencyContact.NotificationPreference.ALL) }
+    
+    // Update state if initial values change
+    LaunchedEffect(initialName, initialPhone) {
+        if (initialName.isNotEmpty()) name = initialName
+        if (initialPhone.isNotEmpty()) phoneNumber = initialPhone
+    }
 
     Scaffold(
         topBar = {
@@ -438,6 +608,7 @@ fun AddEmergencyContactScreen(
                         } else {
                             errorMessage = "Failed to save contact"
                             showErrorDialog = true
+                            showSaveDialog = false
                         }
                     }
                 ) {

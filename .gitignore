@@ -75,3 +75,5 @@ DerivedData/
 
 # Models
 *.gguf
+# External Native Dependencies
+app/src/main/cpp/llama.cpp

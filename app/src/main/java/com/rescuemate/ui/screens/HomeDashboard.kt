@@ -42,10 +42,12 @@ import com.rescuemate.R
 import com.rescuemate.emergency.EmergencyConstants
 import com.rescuemate.emergency.EmergencyManager
 import com.rescuemate.emergency.service.EmergencyBackgroundService
+import com.rescuemate.data.UserPreferences
 import com.rescuemate.emergency.health.HealthMonitoringService
 import com.rescuemate.services.ElevenLabsConversationalService
 import com.rescuemate.ui.components.*
 import com.rescuemate.ui.theme.*
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -57,6 +59,7 @@ fun HomeDashboard(
     onNavigate: (String) -> Unit
 ) {
     val context = LocalContext.current
+    val userPrefs = remember { UserPreferences(context) }
     
     // Safe initialization of services
     var startupError by remember { mutableStateOf<String?>(null) }
@@ -228,6 +231,8 @@ fun HomeDashboard(
                 aiConversationMode = conversationPrefs.getString("mode", "idle") ?: "idle"
                 
                 delay(500L)
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.e("HomeDashboard", "Error in monitoring loop", e)
                 delay(500L)
@@ -368,6 +373,22 @@ fun HomeDashboard(
                         }
                     }
                 )
+                
+                Spacer(modifier = Modifier.height(8.dp))
+                
+                // Logs Icon - Right aligned below Start Monitoring
+                Box(modifier = Modifier.fillMaxWidth()) {
+                     IconButton(
+                         onClick = { onNavigate("logs") },
+                         modifier = Modifier.align(Alignment.CenterEnd)
+                     ) {
+                         Icon(
+                             imageVector = Icons.Default.List,
+                             contentDescription = "Logs",
+                             tint = CosmicTextSecondary
+                         )
+                     }
+                }
 
                 Spacer(modifier = Modifier.weight(1f))
 
@@ -906,7 +927,7 @@ private fun stopMonitoringService(context: Context) {
     context.stopService(intent)
 }
 
-// Duplicated helper for startVoiceConversation to keep file self-contained or if not imported
+    // Duplicated helper for startVoiceConversation to keep file self-contained or if not imported
 private fun startVoiceConversation(
     context: Context,
     conversationalService: ElevenLabsConversationalService,
@@ -924,9 +945,14 @@ private fun startVoiceConversation(
         ?: com.rescuemate.BuildConfig.ELEVEN_AGENT_ID
     val voiceId = prefs.getString("selected_voice_id", null)
     
+    // Get userId for logging from UserPreferences for consistency
+    val userPrefs = UserPreferences(context)
+    val userId = userPrefs.getUserId()
+
     conversationalService.startConversation(
         agentId = agentId,
         voiceId = voiceId,
+        userId = userId,
         callbacks = object : ElevenLabsConversationalService.ConversationCallbacks {
             override fun onConnect(conversationId: String) { onSuccess(conversationId) }
             override fun onModeChange(mode: String) { onModeChange(mode) }

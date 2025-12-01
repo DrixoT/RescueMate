@@ -192,6 +192,7 @@ fun RescueMateNavigation(
                         screen.startsWith("settings") -> navController.navigate(screen)
                         screen.startsWith("profile") -> navController.navigate(screen)
                         screen == "voiceAI" -> navController.navigate(Screen.VoiceAI.route)
+                        screen == "logs" -> navController.navigate(Screen.Logs.route)
                         else -> android.util.Log.w("RescueMateNavigation", "Unknown navigation route: $screen")
                     }
                 }
@@ -415,6 +416,14 @@ fun RescueMateNavigation(
                         popUpTo(Screen.PermissionRequest.route) { inclusive = true }
                     }
                 }
+            )
+        }
+        
+        composable(Screen.Logs.route) {
+            val userId = userPrefs.getUserId()
+            InteractionLogsScreen(
+                userId = userId,
+                onBack = { navController.popBackStack() }
             )
         }
     }
