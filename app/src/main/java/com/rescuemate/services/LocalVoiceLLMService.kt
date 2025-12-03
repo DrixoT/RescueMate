@@ -330,10 +330,10 @@ class LocalVoiceLLMService(private val context: Context) {
         
         // 1. Save Log FIRST - before cleanup
         try {
-            val transcript = transcriptBuilder.toString()
-            if (transcript.isNotBlank()) {
+        val transcript = transcriptBuilder.toString()
+        if (transcript.isNotBlank()) {
                 Log.d(TAG, "Saving interaction log...")
-                interactionLogManager.saveLog(currentUserId, transcript, "OFFLINE")
+            interactionLogManager.saveLog(currentUserId, transcript, "OFFLINE")
             } else {
                 Log.d(TAG, "Transcript empty, skipping save.")
             }

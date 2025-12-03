@@ -415,3 +415,75 @@ fun RotatingStar(
             .graphicsLayer { rotationZ = angle }
     )
 }
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun AutoCompleteTextField(
+    label: String,
+    value: String,
+    onValueChange: (String) -> Unit,
+    suggestions: List<String>,
+    onSuggestionSelected: (String) -> Unit,
+    modifier: Modifier = Modifier,
+    placeholder: String = "",
+    leadingIcon: @Composable (() -> Unit)? = null,
+    maxSuggestions: Int = 5
+) {
+    var expanded by remember { mutableStateOf(false) }
+
+    ExposedDropdownMenuBox(
+        expanded = expanded,
+        onExpandedChange = { expanded = it },
+        modifier = modifier
+    ) {
+        OutlinedTextField(
+            value = value,
+            onValueChange = {
+                onValueChange(it)
+                expanded = it.isNotEmpty() && suggestions.any { suggestion ->
+                    suggestion.contains(it, ignoreCase = true)
+                }
+            },
+            label = { Text(label) },
+            placeholder = { Text(placeholder) },
+            leadingIcon = leadingIcon,
+            trailingIcon = {
+                ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded)
+            },
+            modifier = Modifier
+                .fillMaxWidth()
+                .menuAnchor(),
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedBorderColor = CosmicPrimary,
+                unfocusedBorderColor = CosmicBorder,
+                focusedLabelColor = CosmicPrimary,
+                unfocusedLabelColor = CosmicTextSecondary,
+                cursorColor = CosmicPrimary
+            )
+        )
+
+        val filteredSuggestions = suggestions
+            .filter { suggestion ->
+                suggestion.contains(value, ignoreCase = true)
+            }
+            .take(maxSuggestions)
+
+        if (filteredSuggestions.isNotEmpty()) {
+            ExposedDropdownMenu(
+                expanded = expanded,
+                onDismissRequest = { expanded = false }
+            ) {
+                filteredSuggestions.forEach { suggestion ->
+                    DropdownMenuItem(
+                        text = { Text(suggestion) },
+                        onClick = {
+                            onSuggestionSelected(suggestion)
+                            expanded = false
+                        },
+                        contentPadding = ExposedDropdownMenuDefaults.ItemContentPadding
+                    )
+                }
+            }
+        }
+    }
+}

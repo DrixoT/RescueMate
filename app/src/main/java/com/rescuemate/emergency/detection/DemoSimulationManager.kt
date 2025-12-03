@@ -37,7 +37,7 @@ class DemoSimulationManager(private val context: Context) {
 
     private val mockSensorService = MockSensorDataService()
     private val healthService = HealthMonitoringService(context)
-    private val emergencyManager = EmergencyManager.getInstance(context)
+    private val emergencyManager = EmergencyManager(context)
     
     private var simulationJob: Job? = null
     private val isRunning = AtomicBoolean(false)
@@ -97,10 +97,28 @@ class DemoSimulationManager(private val context: Context) {
                         Log.e(TAG, "🚨 EMERGENCY THRESHOLD REACHED! Triggering protocol...")
                         
                         withContext(Dispatchers.Main) {
-                            // Use the public trigger method
-                            emergencyManager.triggerEmergency(
-                                type = "HEALTH_ANOMALY",
-                                details = "AI Detected: ${analysis.alertReason}"
+                            // Create dummy MedicalInfo
+                            val dummyMedicalInfo = com.rescuemate.emergency.data.MedicalInfo(
+                                userId = "demo_user",
+                                knownConditions = emptyList(),
+                                currentMedications = emptyList(),
+                                allergies = emptyList()
+                            )
+
+                            // Create dummy UserInfo for demo purposes since we don't have direct access to user prefs here
+                            val dummyUserInfo = com.rescuemate.emergency.data.UserInfo(
+                                userId = "demo_user",
+                                name = "Demo User",
+                                age = 30,
+                                phoneNumber = "0000000000",
+                                medicalInfo = dummyMedicalInfo
+                            )
+                            
+                            // Use the public trigger method with dummy user info
+                            emergencyManager.triggerManualEmergency(
+                                userId = "demo_user",
+                                userInfo = dummyUserInfo,
+                                emergencyType = com.rescuemate.emergency.EmergencyConstants.EmergencyType.MANUAL_TRIGGER // Using manual trigger for immediate effect in demo
                             )
                         }
                         

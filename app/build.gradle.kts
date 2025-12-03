@@ -19,8 +19,8 @@ fun loadEnvVariables(): Map<String, String> {
                 
                 if (lineWithoutComment.isNotEmpty()) {
                     val parts = lineWithoutComment.split("=", limit = 2)
-                    if (parts.size == 2) {
-                        val key = parts[0].trim()
+                if (parts.size == 2) {
+                    val key = parts[0].trim()
                         var value = parts[1].trim()
                         
                         // Remove surrounding quotes if present
@@ -29,7 +29,7 @@ fun loadEnvVariables(): Map<String, String> {
                             value = value.substring(1, value.length - 1)
                         }
                         
-                        envMap[key] = value
+                    envMap[key] = value
                     }
                 }
             }

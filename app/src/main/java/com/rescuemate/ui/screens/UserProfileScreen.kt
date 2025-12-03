@@ -10,6 +10,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AssistChipDefaults
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -21,34 +23,15 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.rescuemate.ui.theme.*
+import com.rescuemate.data.MedicalDataProvider
+import com.rescuemate.ui.components.AutoCompleteTextField
 
-data class MedicalCondition(val id: String, val name: String)
+// Load medical data from the CSV database
+val medicalConditions = MedicalDataProvider.getMedicalConditions().map { it.name }
+val commonMedications = MedicalDataProvider.getMedications().map { it.name }
+val commonAllergies = MedicalDataProvider.getAllergies().map { it.name }
 
-// Sample medical conditions database
-val medicalConditions = listOf(
-    MedicalCondition("diabetes", "Diabetes"),
-    MedicalCondition("hypertension", "Hypertension"),
-    MedicalCondition("asthma", "Asthma"),
-    MedicalCondition("heart_disease", "Heart Disease"),
-    MedicalCondition("epilepsy", "Epilepsy"),
-    MedicalCondition("allergies", "Allergies"),
-    MedicalCondition("arthritis", "Arthritis"),
-    MedicalCondition("cancer", "Cancer"),
-    MedicalCondition("copd", "COPD"),
-    MedicalCondition("depression", "Depression/Anxiety")
-)
-
-val commonMedications = listOf(
-    "Aspirin", "Ibuprofen", "Metformin", "Lisinopril", "Atorvastatin",
-    "Levothyroxine", "Metoprolol", "Amlodipine", "Omeprazole", "Losartan"
-)
-
-val commonAllergies = listOf(
-    "Penicillin", "Sulfa drugs", "Aspirin", "Ibuprofen", "Codeine",
-    "Latex", "Peanuts", "Shellfish", "Bee stings", "No known allergies"
-)
-
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun UserProfileScreen(
     onBack: () -> Unit
@@ -91,13 +74,20 @@ fun UserProfileScreen(
     var sex by remember { mutableStateOf(userPrefs.getUserGender() ?: "") }
     var phone by remember { mutableStateOf(userPrefs.getUserPhone() ?: "") }
     var bloodType by remember { mutableStateOf(userPrefs.getBloodType() ?: "") }
+    // Medical data state
     var medicalHistory by remember { mutableStateOf(userPrefs.getMedicalHistory() ?: "") }
     var currentMedication by remember { mutableStateOf(userPrefs.getCurrentMedication() ?: "") }
     var allergies by remember { mutableStateOf(userPrefs.getAllergies() ?: "") }
-    var selectedConditions by remember { mutableStateOf(setOf<String>()) }
-    var showConditionsDialog by remember { mutableStateOf(false) }
-    var showMedicationDialog by remember { mutableStateOf(false) }
-    var showAllergiesDialog by remember { mutableStateOf(false) }
+
+    // Auto-complete state
+    var medicalHistoryQuery by remember { mutableStateOf("") }
+    var medicationQuery by remember { mutableStateOf("") }
+    var allergyQuery by remember { mutableStateOf("") }
+
+    // Selected items as lists
+    var selectedMedicalConditions by remember { mutableStateOf(medicalHistory.split(",").map { it.trim() }.filter { it.isNotEmpty() }.toMutableList()) }
+    var selectedMedications by remember { mutableStateOf(currentMedication.split(",").map { it.trim() }.filter { it.isNotEmpty() }.toMutableList()) }
+    var selectedAllergies by remember { mutableStateOf(allergies.split(",").map { it.trim() }.filter { it.isNotEmpty() }.toMutableList()) }
 
     // Calculate age from date of birth
     fun calculateAge(dob: String): String {
@@ -136,6 +126,11 @@ fun UserProfileScreen(
                 userPrefs.saveDateOfBirth(dateOfBirth)
             }
 
+            // Update the text fields from selected items
+            medicalHistory = selectedMedicalConditions.joinToString(", ")
+            currentMedication = selectedMedications.joinToString(", ")
+            allergies = selectedAllergies.joinToString(", ")
+
             // Save medical info to UserPreferences
             userPrefs.saveMedicalInfo(
                 medicalHistory = medicalHistory,
@@ -143,34 +138,42 @@ fun UserProfileScreen(
                 allergies = allergies,
                 bloodType = bloodType
             )
-            
+
             // Also save to EmergencyDatabaseHelper for emergency events
             val repository = com.rescuemate.data.repository.EmergencyRepository(context)
             val userId = userPrefs.getUserId()
-            
-            // Parse medical history, medications, and allergies from text
-            val conditions = medicalHistory.split(",").map { it.trim() }.filter { it.isNotEmpty() }
-            val medications = currentMedication.split(",").map { 
+
+            // Use selected items for structured data
+            val medications = selectedMedications.map {
                 com.rescuemate.emergency.data.Medication(
-                    name = it.trim(),
+                    name = it,
                     dosage = "",
                     frequency = ""
                 )
             }.filter { it.name.isNotEmpty() }
-            val allergyList = allergies.split(",").map { it.trim() }.filter { it.isNotEmpty() }
             
             val medicalInfo = com.rescuemate.emergency.data.MedicalInfo(
                 userId = userId,
                 dateOfBirth = dateOfBirth.ifEmpty { null },
                 bloodType = bloodType.ifEmpty { null },
-                knownConditions = conditions,
+                knownConditions = selectedMedicalConditions,
                 currentMedications = medications,
-                allergies = allergyList,
+                allergies = selectedAllergies,
                 baselineHeartRate = 70
             )
             
             repository.saveMedicalInfo(medicalInfo)
-            
+
+            // Save medical info to Firestore as well
+            scope.launch {
+                try {
+                    firestoreRepo.saveMedicalInfo(medicalInfo)
+                    android.util.Log.d("UserProfileScreen", "✅ Medical info saved to Firestore")
+                } catch (e: Exception) {
+                    android.util.Log.e("UserProfileScreen", "Error saving medical info to Firestore", e)
+                }
+            }
+
             android.util.Log.d("UserProfileScreen", "✅ Profile saved to both UserPreferences and EmergencyDatabase")
             android.widget.Toast.makeText(context, "Profile saved successfully", android.widget.Toast.LENGTH_SHORT).show()
 
@@ -329,77 +332,179 @@ fun UserProfileScreen(
                 Spacer(modifier = Modifier.height(8.dp))
                 SectionTitle("Medical Information")
 
-                // Medical History
-                OutlinedTextField(
-                    value = medicalHistory,
-                    onValueChange = { medicalHistory = it },
-                    label = { Text("Medical History") },
-                    placeholder = { Text("Diabetes, Hypertension, etc.") },
-                    leadingIcon = {
-                        Icon(
-                            imageVector = Icons.Default.MedicalServices,
-                            contentDescription = null,
-                            tint = CosmicPrimary
-                        )
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                    minLines = 3,
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = CosmicPrimary,
-                        unfocusedBorderColor = CosmicBorder,
-                        focusedLabelColor = CosmicPrimary,
-                        unfocusedLabelColor = CosmicTextSecondary,
-                        cursorColor = CosmicPrimary
+                // Medical History with Auto-complete
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    AutoCompleteTextField(
+                        label = "Medical History",
+                        value = medicalHistoryQuery,
+                        onValueChange = { medicalHistoryQuery = it },
+                        suggestions = medicalConditions,
+                        onSuggestionSelected = { suggestion ->
+                            if (!selectedMedicalConditions.contains(suggestion)) {
+                                selectedMedicalConditions.add(suggestion)
+                            }
+                            medicalHistoryQuery = ""
+                        },
+                        placeholder = "Type to search medical conditions...",
+                        leadingIcon = {
+                            Icon(
+                                imageVector = Icons.Default.MedicalServices,
+                                contentDescription = null,
+                                tint = CosmicPrimary
+                            )
+                        }
                     )
-                )
 
-                // Current Medications
-                OutlinedTextField(
-                    value = currentMedication,
-                    onValueChange = { currentMedication = it },
-                    label = { Text("Current Medications") },
-                    placeholder = { Text("Aspirin, Metformin, etc.") },
-                    leadingIcon = {
-                        Icon(
-                            imageVector = Icons.Default.Medication,
-                            contentDescription = null,
-                            tint = CosmicPrimary
+                    // Display selected medical conditions as chips
+                    if (selectedMedicalConditions.isNotEmpty()) {
+                        Text(
+                            text = "Selected Conditions:",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = CosmicTextSecondary,
+                            modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)
                         )
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                    minLines = 2,
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = CosmicPrimary,
-                        unfocusedBorderColor = CosmicBorder,
-                        focusedLabelColor = CosmicPrimary,
-                        unfocusedLabelColor = CosmicTextSecondary,
-                        cursorColor = CosmicPrimary
-                    )
-                )
+                        FlowRow(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            selectedMedicalConditions.forEach { condition ->
+                                AssistChip(
+                                    onClick = { selectedMedicalConditions.remove(condition) },
+                                    label = { Text(condition, style = MaterialTheme.typography.bodySmall) },
+                                    trailingIcon = {
+                                        Icon(
+                                            Icons.Default.Close,
+                                            contentDescription = "Remove",
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    },
+                                    colors = AssistChipDefaults.assistChipColors(
+                                        containerColor = CosmicPrimary.copy(alpha = 0.1f),
+                                        labelColor = CosmicPrimary,
+                                        trailingIconContentColor = CosmicPrimary
+                                    )
+                                )
+                            }
+                        }
+                    }
+                }
 
-                // Allergies
-                OutlinedTextField(
-                    value = allergies,
-                    onValueChange = { allergies = it },
-                    label = { Text("Allergies") },
-                    placeholder = { Text("Penicillin, Peanuts, etc.") },
-                    leadingIcon = {
-                        Icon(
-                            imageVector = Icons.Default.Warning,
-                            contentDescription = null,
-                            tint = CosmicPrimary
-                        )
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                    minLines = 2,
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = CosmicPrimary,
-                        unfocusedBorderColor = CosmicBorder,
-                        focusedLabelColor = CosmicPrimary,
-                        unfocusedLabelColor = CosmicTextSecondary,
-                        cursorColor = CosmicPrimary
+                // Current Medications with Auto-complete
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    AutoCompleteTextField(
+                        label = "Current Medications",
+                        value = medicationQuery,
+                        onValueChange = { medicationQuery = it },
+                        suggestions = commonMedications,
+                        onSuggestionSelected = { suggestion ->
+                            if (!selectedMedications.contains(suggestion)) {
+                                selectedMedications.add(suggestion)
+                            }
+                            medicationQuery = ""
+                        },
+                        placeholder = "Type to search medications...",
+                        leadingIcon = {
+                            Icon(
+                                imageVector = Icons.Default.Medication,
+                                contentDescription = null,
+                                tint = CosmicPrimary
+                            )
+                        }
                     )
-                )
+
+                    // Display selected medications as chips
+                    if (selectedMedications.isNotEmpty()) {
+                        Text(
+                            text = "Selected Medications:",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = CosmicTextSecondary,
+                            modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)
+                        )
+                        FlowRow(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            selectedMedications.forEach { medication ->
+                                AssistChip(
+                                    onClick = { selectedMedications.remove(medication) },
+                                    label = { Text(medication, style = MaterialTheme.typography.bodySmall) },
+                                    trailingIcon = {
+                                        Icon(
+                                            Icons.Default.Close,
+                                            contentDescription = "Remove",
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    },
+                                    colors = AssistChipDefaults.assistChipColors(
+                                        containerColor = CosmicPrimary.copy(alpha = 0.1f),
+                                        labelColor = CosmicPrimary,
+                                        trailingIconContentColor = CosmicPrimary
+                                    )
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // Allergies with Auto-complete
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    AutoCompleteTextField(
+                        label = "Allergies",
+                        value = allergyQuery,
+                        onValueChange = { allergyQuery = it },
+                        suggestions = commonAllergies,
+                        onSuggestionSelected = { suggestion ->
+                            if (!selectedAllergies.contains(suggestion)) {
+                                selectedAllergies.add(suggestion)
+                            }
+                            allergyQuery = ""
+                        },
+                        placeholder = "Type to search allergies...",
+                        leadingIcon = {
+                            Icon(
+                                imageVector = Icons.Default.Warning,
+                                contentDescription = null,
+                                tint = CosmicPrimary
+                            )
+                        }
+                    )
+
+                    // Display selected allergies as chips
+                    if (selectedAllergies.isNotEmpty()) {
+                        Text(
+                            text = "Selected Allergies:",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = CosmicTextSecondary,
+                            modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)
+                        )
+                        FlowRow(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            selectedAllergies.forEach { allergy ->
+                                AssistChip(
+                                    onClick = { selectedAllergies.remove(allergy) },
+                                    label = { Text(allergy, style = MaterialTheme.typography.bodySmall) },
+                                    trailingIcon = {
+                                        Icon(
+                                            Icons.Default.Close,
+                                            contentDescription = "Remove",
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    },
+                                    colors = AssistChipDefaults.assistChipColors(
+                                        containerColor = CosmicPrimary.copy(alpha = 0.1f),
+                                        labelColor = CosmicPrimary,
+                                        trailingIconContentColor = CosmicPrimary
+                                    )
+                                )
+                            }
+                        }
+                    }
+                }
 
                 // Emergency Note
                 Card(
@@ -442,46 +547,6 @@ fun UserProfileScreen(
         }
     }
 
-    // Medical Conditions Dialog
-    if (showConditionsDialog) {
-        AlertDialog(
-            onDismissRequest = { showConditionsDialog = false },
-            title = { Text("Select Medical Conditions") },
-            text = {
-                Column(
-                    modifier = Modifier.verticalScroll(rememberScrollState())
-                ) {
-                    medicalConditions.forEach { condition ->
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 4.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Checkbox(
-                                checked = selectedConditions.contains(condition.name),
-                                onCheckedChange = {
-                                    selectedConditions = if (it) {
-                                        selectedConditions + condition.name
-                                    } else {
-                                        selectedConditions - condition.name
-                                    }
-                                }
-                            )
-                            Text(condition.name, modifier = Modifier.padding(start = 8.dp))
-                        }
-                    }
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = { showConditionsDialog = false }) {
-                    Text("Done")
-                }
-            }
-        )
-    }
-
-    // Similar dialogs for medications and allergies would go here
 }
 
 @Composable
@@ -575,4 +640,3 @@ fun ProfileClickableField(
         }
     }
 }
-

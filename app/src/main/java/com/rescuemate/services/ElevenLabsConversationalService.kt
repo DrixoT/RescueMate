@@ -37,7 +37,7 @@ class ElevenLabsConversationalService(private val context: Context) {
         // ElevenLabs API Configuration
         private val AGENT_ID = BuildConfig.ELEVEN_AGENT_ID
     }
-    
+
     // Network monitoring and local fallback
     private val networkMonitor = NetworkMonitor(context)
     private val localVoiceLLMService = LocalVoiceLLMService(context)
@@ -468,7 +468,7 @@ class ElevenLabsConversationalService(private val context: Context) {
         scope.launch {
             // 1. Save Log FIRST - before clearing anything
             // This ensures we capture the transcript even if session cleanup fails
-            try {
+        try {
                 val transcript = transcriptBuilder.toString()
                 if (transcript.isNotBlank()) {
                     Log.d(TAG, "Saving interaction log...")
@@ -478,19 +478,19 @@ class ElevenLabsConversationalService(private val context: Context) {
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Error saving interaction log", e)
-            }
-
+                }
+                
             // 2. End Session
             try {
                 conversationSession?.endSession()
                 Log.d(TAG, "✓ Conversation ended")
-            } catch (e: Exception) {
+        } catch (e: Exception) {
                 Log.e(TAG, "Error ending conversation session", e)
             } finally {
                 // 3. Cleanup
                 conversationSession = null
-                isMutedState = false
-                conversationId = null
+        isMutedState = false
+        conversationId = null
                 
                 // Use local val to avoid race conditions if 'callbacks' is nulled elsewhere
                 val currentCallbacks = callbacks

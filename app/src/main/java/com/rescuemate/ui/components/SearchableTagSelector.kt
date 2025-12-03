@@ -3,17 +3,13 @@ package com.rescuemate.ui.components
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.Layout
@@ -51,77 +47,77 @@ fun SearchableTagSelector(
     }
 
     Column(modifier = modifier) {
-        // Search Input
-        OutlinedTextField(
-            value = query,
-            onValueChange = { 
-                query = it
-                expanded = true
-            },
-            label = { Text(label) },
-            leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
-            trailingIcon = {
-                if (query.isNotEmpty()) {
-                    IconButton(onClick = { 
-                        // Add custom tag if not empty and not in list
-                        if (query.isNotBlank() && query !in selectedOptions) {
-                            onOptionSelected(query.trim())
-                            query = ""
+        // Search Input with ExposedDropdownMenuBox
+        ExposedDropdownMenuBox(
+            expanded = expanded && (filteredOptions.isNotEmpty() || query.isNotEmpty()),
+            onExpandedChange = { expanded = it }
+        ) {
+            OutlinedTextField(
+                value = query,
+                onValueChange = { 
+                    query = it
+                    expanded = true
+                },
+                label = { Text(label) },
+                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                trailingIcon = {
+                    if (query.isNotEmpty()) {
+                        IconButton(onClick = { 
+                            // Add custom tag if not empty and not in list
+                            if (query.isNotBlank() && query !in selectedOptions) {
+                                onOptionSelected(query.trim())
+                                query = ""
+                                expanded = false
+                            }
+                        }) {
+                            Icon(Icons.Default.Add, "Add Custom")
                         }
-                    }) {
-                        Icon(Icons.Default.Add, "Add Custom")
                     }
-                }
-            },
-            modifier = Modifier.fillMaxWidth(),
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedBorderColor = CosmicPrimary,
-                unfocusedBorderColor = CosmicBorder,
-                focusedTextColor = CosmicTextPrimary,
-                unfocusedTextColor = CosmicTextPrimary,
-                focusedContainerColor = CosmicCard,
-                unfocusedContainerColor = CosmicCard
-            ),
-            singleLine = true
-        )
-
-        // Suggestions List
-        if (expanded && (filteredOptions.isNotEmpty() || query.isNotEmpty())) {
-            Card(
+                },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(top = 4.dp)
-                    .heightIn(max = 200.dp),
-                colors = CardDefaults.cardColors(containerColor = CosmicCard),
-                elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
-            ) {
-                LazyColumn {
-                    items(filteredOptions) { option ->
-                        ListItem(
-                            headlineContent = { Text(option, color = CosmicTextPrimary) },
-                            modifier = Modifier
-                                .clickable {
-                                    onOptionSelected(option)
-                                    query = ""
-                                    expanded = false
-                                    focusManager.clearFocus()
-                                }
-                                .background(if (option in selectedOptions) CosmicPrimary.copy(alpha = 0.1f) else Color.Transparent)
+                    .menuAnchor(),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = CosmicPrimary,
+                    unfocusedBorderColor = CosmicBorder,
+                    focusedTextColor = CosmicTextPrimary,
+                    unfocusedTextColor = CosmicTextPrimary,
+                    focusedContainerColor = CosmicCard,
+                    unfocusedContainerColor = CosmicCard
+                ),
+                singleLine = true
+            )
+
+            if (expanded) {
+                ExposedDropdownMenu(
+                    expanded = expanded,
+                    onDismissRequest = { expanded = false },
+                    modifier = Modifier.background(CosmicCard).heightIn(max = 200.dp)
+                ) {
+                    filteredOptions.forEach { option ->
+                        DropdownMenuItem(
+                            text = { Text(option, color = CosmicTextPrimary) },
+                            onClick = {
+                                onOptionSelected(option)
+                                query = ""
+                                expanded = false
+                                // Keeping focus to allow typing next tag easily or clearing it
+                                // focusManager.clearFocus() // Optional: keep focus for rapid entry
+                            },
+                            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
                         )
                     }
+
                     if (query.isNotEmpty() && filteredOptions.isEmpty()) {
-                        item {
-                            ListItem(
-                                headlineContent = { Text("Add \"$query\"", color = CosmicPrimary) },
-                                leadingContent = { Icon(Icons.Default.Add, null, tint = CosmicPrimary) },
-                                modifier = Modifier.clickable {
-                                    onOptionSelected(query.trim())
-                                    query = ""
-                                    expanded = false
-                                    focusManager.clearFocus()
-                                }
-                            )
-                        }
+                        DropdownMenuItem(
+                            text = { Text("Add \"$query\"", color = CosmicPrimary) },
+                            leadingIcon = { Icon(Icons.Default.Add, null, tint = CosmicPrimary) },
+                            onClick = {
+                                onOptionSelected(query.trim())
+                                query = ""
+                                expanded = false
+                            }
+                        )
                     }
                 }
             }
@@ -208,4 +204,3 @@ fun SimpleFlowRow(
         }
     }
 }
-

@@ -71,7 +71,7 @@ DerivedData/
 *.min.css
 
 # Documentation
-
+*.md
 
 # Models
 *.gguf
