@@ -547,27 +547,29 @@ class HealthMonitoringService(private val context: Context) {
             "${it.heartRate} BPM"
         }
 
-        return """You are a health assistant for elderly patients. Analyze these vital signs and provide a brief, clear interpretation.
+        return """PREDICT MEDICAL ANOMALIES. You are a critical care monitoring AI.
+Detect if these vitals indicate a medical emergency (Fall, Cardiac Arrest, Tachycardia).
 
-Current Vitals:
+Context:
 - Heart Rate: $currentHeartRate BPM
-- Baseline Heart Rate: $baselineHeartRate BPM
-- Activity Level: $activityLevel
-- Currently Exercising: $isExercising
+- Baseline: $baselineHeartRate BPM
+- Status: ${if (isExercising) "EXERCISING (High HR is normal)" else "RESTING (High HR is ABNORMAL)"}
+- Trend: $readingsText
 
-Recent Heart Rate Readings: $readingsText
+Task:
+1. Check for sudden spikes (>120 BPM while resting).
+2. Check for sudden drops (<40 BPM).
+3. Differentiate exercise from emergency.
 
-Provide risk assessment in JSON format:
+Return ONLY JSON:
 {
   "isAbnormal": true/false,
-  "riskScore": 0.0-1.0,
-  "alertReason": "Brief explanation",
-  "recommendedAction": "What to do",
+  "riskScore": 0.0-1.0 (0.8+ triggers emergency),
+  "alertReason": "Short reason",
+  "recommendedAction": "Action",
   "confidence": 0.0-1.0,
-  "trendAnalysis": "Trend description"
-}
-
-Keep response simple and clear for elderly users.""".trimIndent()
+  "trendAnalysis": "Description"
+}"""
     }
 
     /**
@@ -721,4 +723,3 @@ Keep response simple and clear for elderly users.""".trimIndent()
         return kotlin.math.sqrt(variance)
     }
 }
-

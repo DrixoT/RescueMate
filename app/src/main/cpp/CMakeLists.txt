@@ -62,3 +62,29 @@ target_link_libraries(llama-android
     ${log-lib}
     android
 )
+
+# Add 16KB page size alignment for Android 16KB page size compatibility
+# This ensures all LOAD segments are aligned at 16KB boundaries
+# Required for devices with 16KB page sizes (e.g., Android 15+ devices)
+set(PAGE_SIZE_16KB_LINKER_FLAGS "-Wl,-z,max-page-size=16384")
+
+# Function to apply 16KB alignment to a target if it exists and is a shared library
+function(apply_16kb_alignment target_name)
+    if(TARGET ${target_name})
+        get_target_property(target_type ${target_name} TYPE)
+        if(target_type STREQUAL "SHARED_LIBRARY")
+            target_link_options(${target_name} PRIVATE ${PAGE_SIZE_16KB_LINKER_FLAGS})
+        endif()
+    endif()
+endfunction()
+
+# Apply 16KB alignment flags to all llama.cpp library targets
+# This includes main targets and any variants (ggml-base, ggml-cpu, etc.)
+apply_16kb_alignment(ggml)
+apply_16kb_alignment(ggml-base)
+apply_16kb_alignment(ggml-cpu)
+apply_16kb_alignment(llama)
+apply_16kb_alignment(common)
+
+# Apply 16KB alignment flags to our JNI library
+apply_16kb_alignment(llama-android)

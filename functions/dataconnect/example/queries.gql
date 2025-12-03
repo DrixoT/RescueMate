@@ -1,0 +1,26 @@
+mutation CreateUser($displayName: String!, $email: String, $firebaseAuthUid: String!, $phoneNumber: String, $photoUrl: String) @auth(level: USER) {
+  user_insert(data: {displayName: $displayName, email: $email, firebaseAuthUid: $firebaseAuthUid, phoneNumber: $phoneNumber, photoUrl: $photoUrl, createdAt_expr: "request.time"})
+}
+
+query GetEmergencySettingsForUser @auth(level: USER) {
+  emergencySettings(where: {userId: {eq_expr: "auth.uid"}}) {
+    id
+    autoCallDelaySeconds
+    autoCallEmergencyServices
+    emergencyMessage
+    sendLocationWithAlerts
+  }
+}
+
+mutation UpdateSafeZone($id: UUID!, $name: String, $latitude: Float, $longitude: Float, $radiusMeters: Float, $alertOnExit: Boolean, $notifyContactsOnExit: Boolean) @auth(level: USER) {
+  safeZone_update(key: {id: $id}, data: {name: $name, latitude: $latitude, longitude: $longitude, radiusMeters: $radiusMeters, alertOnExit: $alertOnExit, notifyContactsOnExit: $notifyContactsOnExit})
+}
+
+query ListEmergencyContacts @auth(level: USER) {
+  emergencyContacts(where: {userId: {eq_expr: "auth.uid"}}) {
+    id
+    name
+    phoneNumber
+    relationship
+  }
+}

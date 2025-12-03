@@ -39,7 +39,9 @@ class OpenAIService {
         }
 
         try {
-            val systemPrompt = "You are a medical assistant. Summarize the following conversation between a user and an AI assistant. Focus on the user's symptoms, the advice given, and any actions taken. Keep it concise and professional, suitable for a medical log."
+            val systemPrompt = "You are a medical assistant. Analyze the following conversation and provide a response in exactly this format:\n" +
+                    "Title: [Short, precise medical condition or main symptom, max 5 words]\n" +
+                    "Summary: [Detailed clinical summary of symptoms, actions, and advice. Do not miss any medical details.]"
             
             val jsonBody = JSONObject().apply {
                 put("model", MODEL)

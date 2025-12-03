@@ -274,6 +274,71 @@ async function getAvailableVoices() {
     }
 }
 
+/**
+ * Get conversation token for private ElevenLabs agent
+ * This token is required to start conversations with private agents
+ * @param {string} agentId - The ElevenLabs agent ID
+ * @returns {Promise<{success: boolean, token?: string, error?: string}>}
+ */
+async function getConversationToken(agentId) {
+    try {
+        if (!ELEVEN_API_KEY) {
+            logger.error('ElevenLabs API key not configured for conversation token');
+            return {
+                success: false,
+                error: 'ElevenLabs API key not configured'
+            };
+        }
+
+        if (!agentId) {
+            return {
+                success: false,
+                error: 'Agent ID is required'
+            };
+        }
+
+        logger.info(`Fetching conversation token for agent: ${agentId}`);
+
+        const response = await axios.get(
+            `${ELEVEN_API_URL}/convai/conversation/token?agent_id=${agentId}`,
+            {
+                headers: {
+                    'xi-api-key': ELEVEN_API_KEY
+                },
+                timeout: 10000
+            }
+        );
+
+        if (response.data && response.data.token) {
+            logger.info('Conversation token fetched successfully');
+            return {
+                success: true,
+                token: response.data.token
+            };
+        }
+
+        return {
+            success: false,
+            error: 'No token in response'
+        };
+
+    } catch (error) {
+        logger.error('Get conversation token error:', error);
+        
+        if (error.response) {
+            return {
+                success: false,
+                error: `ElevenLabs API error: ${error.response.status} - ${JSON.stringify(error.response.data)}`
+            };
+        }
+
+        return {
+            success: false,
+            error: error.message || 'Failed to fetch conversation token'
+        };
+    }
+}
+
 // Run cleanup on startup and every hour
 cleanupOldAudioFiles();
 setInterval(cleanupOldAudioFiles, 60 * 60 * 1000);
@@ -283,6 +348,7 @@ module.exports = {
     generateEmergencyMessage,
     generateEmergencyCallVoice,
     getAvailableVoices,
-    cleanupOldAudioFiles
+    cleanupOldAudioFiles,
+    getConversationToken
 };
 

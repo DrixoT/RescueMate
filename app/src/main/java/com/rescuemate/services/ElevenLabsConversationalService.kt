@@ -18,6 +18,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.withContext
 
 /**
  * ElevenLabs Conversational AI Service using Official SDK
@@ -36,7 +37,7 @@ class ElevenLabsConversationalService(private val context: Context) {
         // ElevenLabs API Configuration
         private val AGENT_ID = BuildConfig.ELEVEN_AGENT_ID
     }
-
+    
     // Network monitoring and local fallback
     private val networkMonitor = NetworkMonitor(context)
     private val localVoiceLLMService = LocalVoiceLLMService(context)
@@ -138,65 +139,70 @@ class ElevenLabsConversationalService(private val context: Context) {
         // Reset transcript
         transcriptBuilder.clear()
         
+        // Note: SDK 0.5.4 does not expose client-side voice overrides in ConversationConfig constructor
+        // The voice must be configured in the ElevenLabs Agent dashboard.
         if (voiceId != null && voiceId.isNotBlank()) {
-            Log.w(TAG, "⚠️ Voice override not supported in SDK 0.4.0")
-            Log.w(TAG, "   Please configure voice in ElevenLabs agent dashboard")
-            Log.d(TAG, "   Requested voice ID: $voiceId (cannot be set via SDK)")
+            Log.w(TAG, "⚠️ Voice override requested ($voiceId) but client-side override is not supported in this SDK version.")
+            Log.i(TAG, "Please ensure the desired voice is set in the ElevenLabs Agent > Security settings on the dashboard.")
         } else {
             Log.d(TAG, "🎙️ Using agent's configured voice")
         }
 
         this.callbacks = callbacks
 
+        // Launch coroutine to start session
+        scope.launch {
             try {
-            // Create conversation configuration
-            val config = ConversationConfig(
-                agentId = agentId,
-                onConnect = { convId ->
-                    conversationId = convId
-                    Log.d(TAG, "📱 Conversation connected: $convId")
-                    callbacks.onConnect(convId)
-                    callbacks.onStatusChange("connected")
-                    
-                    // Start monitoring network during active conversation
-                    startNetworkMonitoring(callbacks)
-                },
-                onMessage = { source, message ->
-                    Log.d(TAG, "💬 Message from $source: ${message.take(100)}${if (message.length > 100) "..." else ""}")
-                    
-                    // Accumulate transcript
-                    if (message.isNotBlank()) {
-                        transcriptBuilder.append("$source: $message\n")
+                Log.d(TAG, "Connecting to public agent: $agentId")
+                callbacks.onStatusChange("connecting")
+                
+                // Create conversation configuration directly with agent ID (for public agents)
+                val config = ConversationConfig(
+                    agentId = agentId,
+                    onConnect = { convId ->
+                        conversationId = convId
+                        Log.d(TAG, "📱 Conversation connected: $convId")
+                        callbacks.onConnect(convId)
+                        callbacks.onStatusChange("connected")
+                        
+                        // Start monitoring network during active conversation
+                        startNetworkMonitoring(callbacks)
+                    },
+                    onMessage = { source, message ->
+                        Log.d(TAG, "💬 Message from $source: ${message.take(100)}${if (message.length > 100) "..." else ""}")
+                        
+                        // Accumulate transcript
+                        if (message.isNotBlank()) {
+                            transcriptBuilder.append("$source: $message\n")
+                        }
+                        
+                        callbacks.onMessage(source, message)
+                    },
+                    onModeChange = { mode ->
+                        Log.d(TAG, "🔄 Mode changed to: $mode")
+                        callbacks.onModeChange(mode.name)
+                    },
+                    onStatusChange = { status ->
+                        Log.d(TAG, "📊 Status changed to: $status")
+                        callbacks.onStatusChange(status.name)
+                    },
+                    onCanSendFeedbackChange = { canSend ->
+                        Log.d(TAG, "👍 Can send feedback: $canSend")
+                        callbacks.onCanSendFeedback(canSend)
+                    },
+                    onUnhandledClientToolCall = { call ->
+                        Log.w(TAG, "⚠️ Unhandled client tool call: $call")
+                    },
+                    onVadScore = { score ->
+                        // Voice Activity Detection - shows when user is speaking
+                        if (score > 0.1f) {
+                            Log.d(TAG, "🎤 Voice detected! VAD: $score")
+                        }
+                        callbacks.onAudioLevelChange(score)
                     }
-                    
-                    callbacks.onMessage(source, message)
-                },
-                onModeChange = { mode ->
-                    Log.d(TAG, "🔄 Mode changed to: $mode")
-                    callbacks.onModeChange(mode.name)
-                },
-                onStatusChange = { status ->
-                    Log.d(TAG, "📊 Status changed to: $status")
-                    callbacks.onStatusChange(status.name)
-                },
-                onCanSendFeedbackChange = { canSend ->
-                    Log.d(TAG, "👍 Can send feedback: $canSend")
-                    callbacks.onCanSendFeedback(canSend)
-                },
-                onUnhandledClientToolCall = { call ->
-                    Log.w(TAG, "⚠️ Unhandled client tool call: $call")
-                },
-                onVadScore = { score ->
-                    // Voice Activity Detection - shows when user is speaking
-                    if (score > 0.1f) {
-                        Log.d(TAG, "🎤 Voice detected! VAD: $score")
-                    }
-                    callbacks.onAudioLevelChange(score)
-                }
-            )
+                )
 
-            // Start conversation session
-            scope.launch {
+                // Start conversation session
                 try {
                     conversationSession = ConversationClient.startSession(config, context)
                     
@@ -205,26 +211,27 @@ class ElevenLabsConversationalService(private val context: Context) {
                     Log.d(TAG, "Ready! Starting interactive voice conversation...")
                     Log.d(TAG, "Speak into your microphone to talk with the AI agent")
                     Log.d(TAG, "=" * 60)
-        } catch (e: Exception) {
+                } catch (e: Exception) {
                     Log.e(TAG, "Failed to start session", e)
                     
                     // Check if error is network-related and fallback to local LLM
                     val errorMessage = e.message?.lowercase() ?: ""
                     if (errorMessage.contains("network") || errorMessage.contains("connection") || 
-                        errorMessage.contains("timeout") || errorMessage.contains("unreachable")) {
-                        Log.w(TAG, "⚠️ Network error detected - switching to local LLM fallback")
+                        errorMessage.contains("timeout") || errorMessage.contains("unreachable") ||
+                        errorMessage.contains("401") || errorMessage.contains("unauthorized")) {
+                        Log.w(TAG, "⚠️ Network/auth error detected - switching to local LLM fallback")
                         startLocalConversation(callbacks)
                     } else {
                         callbacks.onError("Failed to start session: ${e.message}")
                     }
                     conversationSession = null
                 }
-            }
 
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to start conversation", e)
-            callbacks.onError("Failed to start: ${e.message}")
-            conversationSession = null
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to start conversation", e)
+                callbacks.onError("Failed to start: ${e.message}")
+                conversationSession = null
+            }
         }
     }
 
@@ -459,29 +466,43 @@ class ElevenLabsConversationalService(private val context: Context) {
         Log.d(TAG, "\nEnding conversation...")
 
         scope.launch {
-        try {
-                conversationSession?.endSession()
-                Log.d(TAG, "✓ Conversation ended")
-                
-                // Save log
+            // 1. Save Log FIRST - before clearing anything
+            // This ensures we capture the transcript even if session cleanup fails
+            try {
                 val transcript = transcriptBuilder.toString()
                 if (transcript.isNotBlank()) {
+                    Log.d(TAG, "Saving interaction log...")
                     interactionLogManager.saveLog(currentUserId, transcript, "ONLINE")
+                } else {
+                    Log.d(TAG, "Transcript empty, skipping save.")
                 }
-                
-        } catch (e: Exception) {
-                Log.e(TAG, "Error ending conversation", e)
+            } catch (e: Exception) {
+                Log.e(TAG, "Error saving interaction log", e)
+            }
+
+            // 2. End Session
+            try {
+                conversationSession?.endSession()
+                Log.d(TAG, "✓ Conversation ended")
+            } catch (e: Exception) {
+                Log.e(TAG, "Error ending conversation session", e)
             } finally {
+                // 3. Cleanup
                 conversationSession = null
-        isMutedState = false
-        conversationId = null
+                isMutedState = false
+                conversationId = null
                 
-                callbacks?.onDisconnect()
-                callbacks = null
+                // Use local val to avoid race conditions if 'callbacks' is nulled elsewhere
+                val currentCallbacks = callbacks
+                callbacks = null // Clear reference immediately
+                
+                withContext(Dispatchers.Main) {
+                     currentCallbacks?.onDisconnect()
+                }
             }
         }
 
-        Log.d(TAG, "✓ Conversation ended. Goodbye!")
+        Log.d(TAG, "✓ Conversation cleanup initiated.")
     }
 
     /**
@@ -516,7 +537,7 @@ class ElevenLabsConversationalService(private val context: Context) {
         Log.d(TAG, "Cleaning up resources...")
         endConversation()
         localVoiceLLMService.cleanup()
-        networkMonitor.stopMonitoring()
+        stopNetworkMonitoring()
         scope.cancel()
         Log.d(TAG, "✓ Cleanup complete")
     }

@@ -14,15 +14,21 @@ class StreamingLLM(private val modelPath: String) {
 
     companion object {
         private const val TAG = "StreamingLLM"
+        private var nativeLibraryLoaded = false
         
         init {
             try {
+                Log.d(TAG, "Loading native library 'llama-android'...")
                 System.loadLibrary("llama-android")
-                Log.d(TAG, "Native library 'llama-android' loaded successfully")
+                nativeLibraryLoaded = true
+                Log.d(TAG, "SUCCESS: Native library 'llama-android' loaded successfully")
             } catch (e: UnsatisfiedLinkError) {
-                Log.e(TAG, "Failed to load native library 'llama-android'", e)
+                nativeLibraryLoaded = false
+                Log.e(TAG, "FAILED: Could not load native library 'llama-android': ${e.message}", e)
             }
         }
+        
+        fun isNativeLibraryLoaded(): Boolean = nativeLibraryLoaded
     }
 
     // Native methods that must be implemented in the C++ library
@@ -36,32 +42,51 @@ class StreamingLLM(private val modelPath: String) {
     
     private var modelContext: Long = 0
     private var isInitialized = false
+    private val modelLock = Any() // Lock for native context access
 
     /**
      * Initialize the LLM model.
      */
     fun initialize(): Boolean {
-        if (isInitialized) return true
+        Log.d(TAG, "Starting model initialization...")
         
-        val file = File(modelPath)
-        if (!file.exists()) {
-            Log.e(TAG, "Model file not found at $modelPath")
-            return false
-        }
-
-        try {
-            modelContext = initModel(modelPath)
-            if (modelContext != 0L) {
-                isInitialized = true
-                Log.d(TAG, "Model initialized successfully")
+        synchronized(modelLock) {
+            if (isInitialized) {
+                Log.d(TAG, "Model already initialized, returning true")
                 return true
             }
-        } catch (e: UnsatisfiedLinkError) {
-             Log.e(TAG, "Native method initModel not found. Make sure JNI bindings are correct.", e)
-        } catch (e: Exception) {
-            Log.e(TAG, "Error initializing model", e)
+            
+            if (!nativeLibraryLoaded) {
+                Log.e(TAG, "FAILED: Cannot initialize - native library was not loaded")
+                return false
+            }
+            
+            val file = File(modelPath)
+            if (!file.exists()) {
+                Log.e(TAG, "FAILED: Model file not found at $modelPath")
+                return false
+            }
+            Log.d(TAG, "Model file exists: $modelPath (${file.length() / 1024 / 1024} MB)")
+
+            try {
+                Log.d(TAG, "Calling native initModel (this may take 10-30 seconds)...")
+                modelContext = initModel(modelPath)
+                Log.d(TAG, "Native initModel returned: $modelContext")
+                
+                if (modelContext != 0L) {
+                    isInitialized = true
+                    Log.d(TAG, "SUCCESS: Model initialized successfully, context=$modelContext")
+                    return true
+                } else {
+                    Log.e(TAG, "FAILED: Native initModel returned null context (0)")
+                }
+            } catch (e: UnsatisfiedLinkError) {
+                 Log.e(TAG, "FAILED: Native method initModel not found - JNI bindings issue: ${e.message}", e)
+            } catch (e: Exception) {
+                Log.e(TAG, "FAILED: Error initializing model: ${e.message}", e)
+            }
+            return false
         }
-        return false
     }
     
     /**
@@ -73,19 +98,21 @@ class StreamingLLM(private val modelPath: String) {
         systemPrompt: String? = null,
         onToken: (String) -> Unit
     ) {
-        if (!isInitialized) {
-            Log.e(TAG, "Model not initialized")
-            return
-        }
-
-        val prompt = buildPrompt(userInput, systemPrompt)
-
-        try {
-            generateTokenStream(modelContext, prompt) { token ->
-                onToken(token)
+        synchronized(modelLock) {
+            if (!isInitialized || modelContext == 0L) {
+                Log.e(TAG, "Model not initialized")
+                return
             }
-        } catch (e: Exception) {
-            Log.e(TAG, "Error during generation", e)
+
+            val prompt = buildPrompt(userInput, systemPrompt)
+
+            try {
+                generateTokenStream(modelContext, prompt) { token ->
+                    onToken(token)
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error during generation", e)
+            }
         }
     }
     
@@ -98,36 +125,26 @@ class StreamingLLM(private val modelPath: String) {
         systemPrompt: String? = null,
         maxWaitMs: Long = 30000
     ): String {
-        if (!isInitialized) {
-            Log.e(TAG, "Model not initialized")
-            return ""
-        }
-
-        val sb = StringBuilder()
-        val latch = CountDownLatch(1)
-        var isFinished = false
-        
-        // We wrap the token generation. 
-        // Note: The native `generateTokenStream` is likely blocking or calls back on the same thread 
-        // depending on implementation. If it's blocking, we don't need the latch.
-        // Assuming it's blocking for safety based on typical JNI calls, but if it spawns a thread,
-        // we need to know when it's done. Llama.cpp bindings usually block until generation is done.
-        
-        try {
-            val prompt = buildPrompt(userInput, systemPrompt)
-            
-            generateTokenStream(modelContext, prompt) { token ->
-                sb.append(token)
-                // Simple heuristic for end of generation if not explicit
-                if (token.contains("</s>")) {
-                    // Strip EOS token
-                }
+        synchronized(modelLock) {
+            if (!isInitialized || modelContext == 0L) {
+                Log.e(TAG, "Model not initialized")
+                return ""
             }
-        } catch (e: Exception) {
-            Log.e(TAG, "Error during full generation", e)
+
+            val sb = StringBuilder()
+            
+            try {
+                val prompt = buildPrompt(userInput, systemPrompt)
+                
+                generateTokenStream(modelContext, prompt) { token ->
+                    sb.append(token)
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error during full generation", e)
+            }
+            
+            return sb.toString().replace("</s>", "").trim()
         }
-        
-        return sb.toString().replace("</s>", "").trim()
     }
 
     /**
@@ -152,16 +169,22 @@ $userInput</s>
     }
     
     fun cleanup() {
-        if (modelContext != 0L) {
-            try {
-                freeModel(modelContext)
-            } catch (e: Exception) {
-                Log.e(TAG, "Error freeing model", e)
+        synchronized(modelLock) {
+            if (modelContext != 0L) {
+                try {
+                    freeModel(modelContext)
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error freeing model", e)
+                }
+                modelContext = 0
+                isInitialized = false
             }
-            modelContext = 0
-            isInitialized = false
         }
     }
     
-    fun isReady(): Boolean = isInitialized
+    fun isReady(): Boolean {
+        synchronized(modelLock) {
+            return isInitialized && modelContext != 0L
+        }
+    }
 }

@@ -22,7 +22,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.rescuemate.emergency.data.InteractionLog
-import com.rescuemate.emergency.data.database.EmergencyDatabaseHelper
+import com.rescuemate.data.repository.FirestoreRepository
 import com.rescuemate.ui.theme.CosmicBackground
 import com.rescuemate.ui.theme.CosmicCard
 import com.rescuemate.ui.theme.CosmicTextPrimary
@@ -41,10 +41,11 @@ fun InteractionLogsScreen(
     var isLoading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
 
+    val firestoreRepo = remember { FirestoreRepository() }
+
     LaunchedEffect(userId) {
         try {
-            val dbHelper = EmergencyDatabaseHelper(context)
-            val result = dbHelper.getInteractionLogs(userId)
+            val result = firestoreRepo.getInteractionLogs(userId)
             result.fold(
                 onSuccess = { 
                     logs = it 
@@ -131,6 +132,22 @@ fun LogItem(log: InteractionLog) {
     var expanded by remember { mutableStateOf(false) }
     val dateFormat = SimpleDateFormat("MMM dd, yyyy • HH:mm", Locale.getDefault())
     
+    // Parse the summary field which may contain "Title: ... | Summary: ..." or similar structure
+    // or just be a plain string. We look for the delimiter or structured format.
+    // The prompt requests: "Title: [Title]\nSummary: [Summary]"
+    
+    val (title, summaryDetail) = remember(log.summary) {
+        if (log.summary.contains("Title:") && log.summary.contains("Summary:")) {
+            val titlePart = log.summary.substringAfter("Title:").substringBefore("Summary:").trim()
+            val summaryPart = log.summary.substringAfter("Summary:").trim()
+            titlePart to summaryPart
+        } else {
+            // Fallback for old logs or failure to follow format
+            val shortTitle = log.summary.take(50).let { if (it.length == 50) "$it..." else it }
+            shortTitle to log.summary
+        }
+    }
+    
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -156,7 +173,7 @@ fun LogItem(log: InteractionLog) {
                     )
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
-                        text = log.summary.ifBlank { "Voice Interaction" },
+                        text = title.ifBlank { "Voice Interaction" },
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
                         color = CosmicTextPrimary
@@ -176,13 +193,13 @@ fun LogItem(log: InteractionLog) {
                 Spacer(modifier = Modifier.height(12.dp))
                 
                 Text(
-                    text = "TRANSCRIPT",
+                    text = "SUMMARY",
                     style = MaterialTheme.typography.labelSmall,
                     color = CosmicTextSecondary
                 )
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
-                    text = log.transcript,
+                    text = summaryDetail,
                     style = MaterialTheme.typography.bodyMedium,
                     color = CosmicTextPrimary.copy(alpha = 0.9f),
                     lineHeight = 20.sp

@@ -13,12 +13,24 @@ fun loadEnvVariables(): Map<String, String> {
 
     if (envFile.exists()) {
         envFile.readLines().forEach { line ->
-            if (line.isNotBlank() && !line.startsWith("#")) {
-                val parts = line.split("=", limit = 2)
-                if (parts.size == 2) {
-                    val key = parts[0].trim()
-                    val value = parts[1].trim().removeSurrounding("'").removeSurrounding("\"")
-                    envMap[key] = value
+            if (line.isNotBlank()) {
+                // Remove inline comments (anything after #)
+                val lineWithoutComment = line.substringBefore("#").trim()
+                
+                if (lineWithoutComment.isNotEmpty()) {
+                    val parts = lineWithoutComment.split("=", limit = 2)
+                    if (parts.size == 2) {
+                        val key = parts[0].trim()
+                        var value = parts[1].trim()
+                        
+                        // Remove surrounding quotes if present
+                        if ((value.startsWith("\"") && value.endsWith("\"")) || 
+                            (value.startsWith("'") && value.endsWith("'"))) {
+                            value = value.substring(1, value.length - 1)
+                        }
+                        
+                        envMap[key] = value
+                    }
                 }
             }
         }
@@ -59,6 +71,8 @@ android {
         externalNativeBuild {
             cmake {
                 arguments("-DANDROID_STL=c++_shared")
+                // Ensure 16KB page size compatibility for Android 16KB page size devices
+                // NDK r28+ supports 16KB alignment by default, linker flags are set in CMakeLists.txt
             }
         }
 
@@ -96,6 +110,10 @@ android {
     packaging {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
+        }
+        // Ensure native libraries are properly packaged for 16KB page size compatibility
+        jniLibs {
+            useLegacyPackaging = false
         }
     }
     externalNativeBuild {
@@ -153,6 +171,10 @@ dependencies {
     implementation("io.coil-kt:coil-compose:2.7.0")
 
     // Vosk Offline Speech Recognition
+    // NOTE: As of Dec 2025, vosk-android 0.3.47 does not support 16KB page size alignment.
+    // This may cause compatibility issues with Android devices using 16KB page sizes.
+    // Monitor https://github.com/alphacep/vosk-api for updates.
+    // The native library (libvosk.so) has LOAD segments not aligned at 16KB boundaries.
     implementation("com.alphacephei:vosk-android:0.3.47")
 
     // Biometric Authentication
@@ -167,6 +189,8 @@ dependencies {
     implementation("com.google.firebase:firebase-auth")
     implementation("com.google.firebase:firebase-firestore")
     implementation("com.google.firebase:firebase-storage")
+    implementation("com.google.firebase:firebase-appcheck-debug")
+    implementation("com.google.firebase:firebase-functions")
     implementation("com.google.android.gms:play-services-auth:21.2.0")
 
     // Testing

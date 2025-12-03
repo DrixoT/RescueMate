@@ -75,7 +75,12 @@ fun UserProfileScreen(
                     android.widget.Toast.makeText(context, "Photo updated successfully", android.widget.Toast.LENGTH_SHORT).show()
                 } catch (e: Exception) {
                     android.util.Log.e("UserProfileScreen", "Error uploading photo", e)
-                    android.widget.Toast.makeText(context, "Failed to upload photo", android.widget.Toast.LENGTH_SHORT).show()
+                    val errorMessage = when {
+                        e.message?.contains("Object does not exist") == true -> "Storage bucket configuration error. Please contact support."
+                        e.message?.contains("unauthorized") == true -> "Permission denied. Please log in again."
+                        else -> "Failed to upload photo: ${e.message}"
+                    }
+                    android.widget.Toast.makeText(context, errorMessage, android.widget.Toast.LENGTH_LONG).show()
                 }
             }
         }

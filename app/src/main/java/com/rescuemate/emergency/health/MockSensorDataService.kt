@@ -58,6 +58,9 @@ class MockSensorDataService {
     private var patternRemainingReadings: Int = 0
     private var lastHeartRate: Int = DEFAULT_BASELINE_HR
     private var consecutiveAnomalies: Int = 0
+    
+    // Forced anomaly override
+    private var forcedAnomalyType: AnomalyType? = null
 
     /**
      * Set baseline heart rate for simulation
@@ -66,6 +69,18 @@ class MockSensorDataService {
         baselineHeartRate = bpm.coerceIn(40, 120)
         lastHeartRate = baselineHeartRate
         Log.d(TAG, "Baseline heart rate set to: $baselineHeartRate BPM")
+    }
+    
+    /**
+     * Force an anomaly for demo purposes
+     */
+    fun forceAnomaly(type: AnomalyType) {
+        forcedAnomalyType = type
+        Log.d(TAG, "Forcing anomaly: $type")
+    }
+    
+    fun clearForcedAnomaly() {
+        forcedAnomalyType = null
     }
 
     /**
@@ -119,19 +134,26 @@ class MockSensorDataService {
             }
         }
 
-        // Check for anomaly
-        val shouldGenerateAnomaly = Random.nextFloat() < anomalyProbability
-        val anomalyType: AnomalyType? = if (shouldGenerateAnomaly) {
-            generateAnomaly(heartRate)
-        } else {
-            null
+        // Check for anomaly (random or forced)
+        var shouldGenerateAnomaly = Random.nextFloat() < anomalyProbability
+        var anomalyTypeToApply: AnomalyType? = null
+        
+        if (forcedAnomalyType != null) {
+            shouldGenerateAnomaly = true
+            anomalyTypeToApply = forcedAnomalyType
+            // Clear forced anomaly after one reading unless we want sustained?
+            // Let's keep it for one reading for now, or let the caller manage it.
+            // For demo "spikes", one reading might be enough if sustained by logic.
+            forcedAnomalyType = null 
+        } else if (shouldGenerateAnomaly) {
+            anomalyTypeToApply = generateAnomaly(heartRate)
         }
 
         // Apply anomaly if present
-        if (anomalyType != null) {
-            heartRate = applyAnomaly(heartRate, anomalyType)
+        if (anomalyTypeToApply != null) {
+            heartRate = applyAnomaly(heartRate, anomalyTypeToApply)
             consecutiveAnomalies++
-            Log.d(TAG, "⚠️ Anomaly detected: $anomalyType, HR: $heartRate BPM")
+            Log.d(TAG, "⚠️ Anomaly detected: $anomalyTypeToApply, HR: $heartRate BPM")
         } else {
             consecutiveAnomalies = 0
         }
@@ -147,8 +169,8 @@ class MockSensorDataService {
             timestamp = currentTime,
             activityLevel = activityLevel,
             isExercising = isExercising,
-            isAnomaly = anomalyType != null,
-            anomalyType = anomalyType
+            isAnomaly = anomalyTypeToApply != null,
+            anomalyType = anomalyTypeToApply
         )
     }
 
@@ -368,5 +390,3 @@ data class SensorStatistics(
     val anomalyCount: Int,
     val totalReadings: Int
 )
-
-

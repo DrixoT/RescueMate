@@ -6,8 +6,51 @@
 const express = require('express');
 const router = express.Router();
 const twilioService = require('../services/twilioService');
+const elevenLabsService = require('../services/elevenLabsService');
 const Emergency = require('../models/Emergency');
 const logger = require('../utils/logger');
+
+/**
+ * GET /api/emergency/conversation-token
+ * Get conversation token for ElevenLabs private agent
+ * Required for starting conversations with private agents from mobile app
+ */
+router.get('/conversation-token', async (req, res) => {
+    try {
+        const { agentId } = req.query;
+
+        if (!agentId) {
+            return res.status(400).json({
+                success: false,
+                error: 'agentId query parameter is required'
+            });
+        }
+
+        logger.info(`Conversation token requested for agent: ${agentId}`);
+
+        const result = await elevenLabsService.getConversationToken(agentId);
+
+        if (!result.success) {
+            logger.error(`Failed to get conversation token: ${result.error}`);
+            return res.status(500).json({
+                success: false,
+                error: result.error
+            });
+        }
+
+        res.json({
+            success: true,
+            token: result.token
+        });
+
+    } catch (error) {
+        logger.error('Conversation token endpoint error:', error);
+        res.status(500).json({
+            success: false,
+            error: error.message || 'Internal server error'
+        });
+    }
+});
 
 /**
  * POST /api/emergency/contact-alert

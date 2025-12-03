@@ -1,0 +1,43 @@
+type User @table {
+  firebaseAuthUid: String!
+  displayName: String!
+  createdAt: Timestamp!
+  email: String
+  phoneNumber: String
+  photoUrl: String
+}
+
+type EmergencyContact @table {
+  user: User!
+  name: String!
+  phoneNumber: String!
+  relationship: String
+}
+
+type EmergencySetting @table {
+  user: User!
+  autoCallEmergencyServices: Boolean!
+  emergencyMessage: String!
+  createdAt: Timestamp!
+  autoCallDelaySeconds: Int
+  sendLocationWithAlerts: Boolean
+}
+
+type AlertHistory @table {
+  user: User!
+  triggeredAt: Timestamp!
+  alertType: String!
+  status: String!
+  location: String # This could be a custom type like GeoPoint if supported
+  messageSent: String
+}
+
+type SafeZone @table {
+  user: User!
+  name: String!
+  latitude: Float!
+  longitude: Float!
+  radiusMeters: Float!
+  alertOnExit: Boolean
+  notifyContactsOnExit: Boolean
+}

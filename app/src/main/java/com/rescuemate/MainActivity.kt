@@ -21,6 +21,10 @@ import com.rescuemate.BuildConfig
 import com.rescuemate.ui.navigation.RescueMateNavigation
 import com.rescuemate.ui.theme.RescueMateTheme
 
+import com.google.firebase.appcheck.FirebaseAppCheck
+import com.google.firebase.appcheck.debug.DebugAppCheckProviderFactory
+import com.google.firebase.FirebaseApp
+
 class MainActivity : ComponentActivity() {
 
     private val TAG = "MainActivity"
@@ -38,6 +42,13 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        // Initialize Firebase App Check in Debug mode
+        FirebaseApp.initializeApp(this)
+        val firebaseAppCheck = FirebaseAppCheck.getInstance()
+        firebaseAppCheck.installAppCheckProviderFactory(
+            DebugAppCheckProviderFactory.getInstance()
+        )
 
         // Initialize Google Maps SDK
         initializeGoogleMaps()

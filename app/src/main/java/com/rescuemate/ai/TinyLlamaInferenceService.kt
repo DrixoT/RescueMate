@@ -35,6 +35,8 @@ class TinyLlamaInferenceService private constructor(private val context: Context
     private var modelPath: String? = null
     private var isInitialized = false
     private var streamingLLM: StreamingLLM? = null
+    
+    // Mutex to prevent concurrent native calls which crash llama.cpp
     private val inferenceMutex = Mutex()
 
     /**
@@ -43,43 +45,56 @@ class TinyLlamaInferenceService private constructor(private val context: Context
     suspend fun initialize(): Boolean = withContext(Dispatchers.IO) {
         inferenceMutex.withLock {
             try {
+                Log.d(TAG, "Starting TinyLlama initialization...")
+                
                 if (isInitialized && modelPath != null && streamingLLM?.isReady() == true) {
+                    Log.d(TAG, "Already initialized, returning true")
                     return@withLock true
                 }
 
                 // Check assets
+                Log.d(TAG, "Checking if model exists in assets...")
                 if (!modelExistsInAssets()) {
                     Log.e(TAG, "Model file not found in assets/models/$MODEL_NAME")
                     return@withLock false
                 }
+                Log.d(TAG, "Model found in assets")
 
                 // Copy to internal storage
+                Log.d(TAG, "Copying model to internal storage (this may take a while for large models)...")
                 modelPath = copyModelFromAssets()
+                Log.d(TAG, "Copy complete, modelPath = $modelPath")
                 
                 if (modelPath != null && File(modelPath!!).exists()) {
+                    val fileSize = File(modelPath!!).length()
+                    Log.d(TAG, "Model file exists at $modelPath (size: ${fileSize / 1024 / 1024} MB)")
+                    
                     // Initialize StreamingLLM instance for offline analysis
                     if (streamingLLM == null) {
+                        Log.d(TAG, "Creating StreamingLLM instance...")
                         streamingLLM = StreamingLLM(modelPath!!)
                     }
                     
                     // Initialize native model if not already done
                     if (!streamingLLM!!.isReady()) {
+                        Log.d(TAG, "Loading model into native memory (this may take 10-30 seconds)...")
                         if (streamingLLM!!.initialize()) {
                             isInitialized = true
-                            Log.d(TAG, "Model prepared and loaded at: $modelPath")
+                            Log.d(TAG, "SUCCESS: Model prepared and loaded at: $modelPath")
                             return@withLock true
                         } else {
-                            Log.e(TAG, "Failed to load model into memory")
+                            Log.e(TAG, "FAILED: Native model initialization failed - check native library loading")
                             return@withLock false
                         }
                     }
+                    Log.d(TAG, "Model already loaded, returning true")
                     return@withLock true
                 } else {
-                    Log.e(TAG, "Failed to prepare model file")
+                    Log.e(TAG, "Failed to prepare model file - modelPath=$modelPath, exists=${modelPath?.let { File(it).exists() }}")
                     return@withLock false
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "Error initializing TinyLlama service", e)
+                Log.e(TAG, "Error initializing TinyLlama service: ${e.message}", e)
                 return@withLock false
             }
         }
@@ -87,7 +102,7 @@ class TinyLlamaInferenceService private constructor(private val context: Context
 
     private fun modelExistsInAssets(): Boolean {
         return try {
-            context.assets.open("models/$MODEL_NAME").use { true }
+            context.assets.list("models")?.contains(MODEL_NAME) == true
         } catch (e: Exception) {
             false
         }
@@ -207,12 +222,20 @@ Do not include markdown formatting or extra text."""
     /**
      * Shutdown the model.
      * WARNING: This affects all users of the service.
+     * This should essentially NEVER be called during app runtime unless memory pressure is extreme.
+     * The crash happened because we were cleaning up while a request was pending or active.
      */
     suspend fun shutdown() {
+        // We prevent shutdown if ANY inference is running by waiting for lock
         inferenceMutex.withLock {
-            streamingLLM?.cleanup()
-            streamingLLM = null
-            isInitialized = false
+            try {
+                streamingLLM?.cleanup()
+                streamingLLM = null
+                isInitialized = false
+                Log.d(TAG, "TinyLlama service shutdown complete")
+            } catch (e: Exception) {
+                Log.e(TAG, "Error shutting down model", e)
+            }
         }
     }
 }

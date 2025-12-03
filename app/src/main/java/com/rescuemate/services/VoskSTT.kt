@@ -2,6 +2,10 @@ package com.rescuemate.services
 
 import android.content.Context
 import android.util.Log
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import org.vosk.Model
 import org.vosk.Recognizer
@@ -14,6 +18,7 @@ import java.io.File
  * VoskSTT
  * Implements offline Speech-to-Text using Vosk-Android.
  * Handles model loading, continuous listening, partial result callbacks, and confidence scoring.
+ * Optimized to offload JSON parsing to background thread.
  */
 class VoskSTT(
     private val context: Context,
@@ -31,15 +36,24 @@ class VoskSTT(
     private var model: Model? = null
     private var speechService: SpeechService? = null
     private var isListening = false
+    
+    // Scope for offloading JSON parsing from the main thread
+    private val processScope = CoroutineScope(Dispatchers.Default)
 
     /**
      * Initialize the Vosk model.
      * Unpacks the model from assets to internal storage if needed.
      */
     fun initialize(onInitialized: (Boolean) -> Unit) {
+        Log.d(TAG, "Starting Vosk initialization...")
+        Log.d(TAG, "Unpacking model from assets: models/$MODEL_NAME")
+        
         StorageService.unpack(context, "models/$MODEL_NAME", "model",
             { result ->
                 try {
+                    Log.d(TAG, "StorageService.unpack success callback received")
+                    Log.d(TAG, "Result type: ${result?.javaClass?.simpleName}, value: $result")
+                    
                     // StorageService.unpack might return the Model object directly or a path
                     if (result is Model) {
                         Log.d(TAG, "Vosk model loaded successfully (Direct Model object)")
@@ -54,6 +68,7 @@ class VoskSTT(
                         is File -> result.absolutePath
                         else -> result.toString()
                     }
+                    Log.d(TAG, "Model path string: $pathString")
                     
                     // Check if the returned path ends with the model name, if not append it
                     val fullModelPath = if (pathString.endsWith(MODEL_NAME)) {
@@ -61,15 +76,20 @@ class VoskSTT(
                     } else {
                         // Look for the specific model folder inside the unpacked path
                         val unpackedDir = File(pathString)
+                        Log.d(TAG, "Checking unpackedDir: ${unpackedDir.absolutePath}, exists: ${unpackedDir.exists()}")
+                        
                         val modelDir = File(unpackedDir, "models/$MODEL_NAME")
                         if (modelDir.exists()) {
+                            Log.d(TAG, "Found model at: ${modelDir.absolutePath}")
                             modelDir.absolutePath
                         } else {
                              // Fallback: try without "models/" prefix if structure is flat
                             val flatModelDir = File(unpackedDir, MODEL_NAME)
                             if (flatModelDir.exists()) {
+                                Log.d(TAG, "Found model at flat path: ${flatModelDir.absolutePath}")
                                 flatModelDir.absolutePath
                             } else {
+                                Log.w(TAG, "Model dir not found at expected paths, using: $pathString")
                                 pathString // Hope for the best
                             }
                         }
@@ -77,16 +97,16 @@ class VoskSTT(
 
                     Log.d(TAG, "Loading Vosk model from: $fullModelPath")
                     model = Model(fullModelPath)
-                    Log.d(TAG, "Vosk model loaded successfully")
+                    Log.d(TAG, "SUCCESS: Vosk model loaded successfully")
                     onInitialized(true)
                 } catch (e: Exception) {
-                    Log.e(TAG, "Failed to load Vosk model: ${e.message}")
+                    Log.e(TAG, "FAILED: Failed to load Vosk model: ${e.message}", e)
                     onError?.invoke("Failed to load speech model: ${e.message}")
                     onInitialized(false)
                 }
             },
             { error ->
-                Log.e(TAG, "Failed to unpack Vosk model: ${error.message}")
+                Log.e(TAG, "FAILED: StorageService.unpack error callback: ${error.message}", error)
                 onError?.invoke("Failed to unpack speech model: ${error.message}")
                 onInitialized(false)
             }
@@ -111,29 +131,43 @@ class VoskSTT(
             
             speechService?.startListening(object : RecognitionListener {
                 override fun onResult(hypothesis: String?) {
-                    hypothesis?.let { processResult(it, isFinal = false) }
+                    hypothesis?.let { json ->
+                        processScope.launch {
+                            processResult(json, isFinal = false)
+                        }
+                    }
                 }
 
                 override fun onPartialResult(hypothesis: String?) {
-                    hypothesis?.let {
-                        try {
-                            val jsonObj = JSONObject(it)
-                            val partial = jsonObj.optString("partial", "")
-                            if (partial.isNotEmpty()) {
-                                onPartialResult?.invoke(partial)
+                    hypothesis?.let { json ->
+                        processScope.launch {
+                            try {
+                                // Lightweight manual parsing for partial results if possible, or just use JSONObject
+                                val jsonObj = JSONObject(json)
+                                val partial = jsonObj.optString("partial", "")
+                                if (partial.isNotEmpty()) {
+                                    withContext(Dispatchers.Main) {
+                                        onPartialResult?.invoke(partial)
+                                    }
+                                }
+                            } catch (e: Exception) {
+                                // Ignore parse errors for partial results
                             }
-                        } catch (e: Exception) {
-                            // Ignore parse errors for partial results
                         }
                     }
                 }
 
                 override fun onFinalResult(hypothesis: String?) {
-                     hypothesis?.let { processResult(it, isFinal = true) }
+                     hypothesis?.let { json ->
+                         processScope.launch {
+                             processResult(json, isFinal = true)
+                         }
+                     }
                 }
 
                 override fun onError(exception: Exception?) {
                     Log.e(TAG, "Recognition error: ${exception?.message}")
+                    // Keep error callback on main thread as it might update UI
                     onError?.invoke(exception?.message ?: "Unknown recognition error")
                     isListening = false
                 }
@@ -154,7 +188,7 @@ class VoskSTT(
         }
     }
 
-    private fun processResult(jsonResult: String, isFinal: Boolean) {
+    private suspend fun processResult(jsonResult: String, isFinal: Boolean) {
         try {
             val jsonObj = JSONObject(jsonResult)
             val text = jsonObj.optString("text", "")
@@ -176,8 +210,11 @@ class VoskSTT(
 
                 Log.d(TAG, "Result: $text (Conf: $confidence)")
                 
-                onResult(text)
-                onResultWithConfidence?.invoke(text, confidence)
+                // Switch back to Main for callbacks to ensure thread safety for consumers
+                withContext(Dispatchers.Main) {
+                    onResult(text)
+                    onResultWithConfidence?.invoke(text, confidence)
+                }
             }
         } catch (e: Exception) {
             Log.e(TAG, "JSON parse error: ${e.message}")

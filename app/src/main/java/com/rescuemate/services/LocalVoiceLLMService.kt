@@ -1,7 +1,6 @@
 package com.rescuemate.services
 
 import android.content.Context
-import android.speech.tts.TextToSpeech
 import android.util.Log
 import com.rescuemate.ai.TinyLlamaInferenceService
 import com.rescuemate.emergency.data.InteractionLogManager
@@ -42,7 +41,7 @@ class LocalVoiceLLMService(private val context: Context) {
     
     // Logging
     private val interactionLogManager = InteractionLogManager(context)
-    private val transcriptBuilder = StringBuilder()
+    private val transcriptBuilder = StringBuffer()
     private var currentUserId: String = "unknown_user"
     
     // State
@@ -84,23 +83,28 @@ class LocalVoiceLLMService(private val context: Context) {
             Log.d(TAG, "Initializing components...")
             
             // 1. Initialize TTS (needs time)
+            Log.d(TAG, "Step 1/3: Initializing StreamingTTS...")
             streamingTTS = StreamingTTS(context)
             val ttsInitialized = streamingTTS?.initialize() ?: false
+            Log.d(TAG, "Step 1/3: TTS initialized = $ttsInitialized")
             if (!ttsInitialized) {
-                Log.e(TAG, "Failed to initialize TTS")
+                Log.e(TAG, "FAILED at Step 1: TTS initialization failed - check if device has offline TTS engine")
                 return false
             }
             
             // 2. Initialize Shared TinyLlama Service
             // This manages the model file and the shared native instance
+            Log.d(TAG, "Step 2/3: Initializing TinyLlama service...")
             val modelReady = tinyLlamaService.initialize()
+            Log.d(TAG, "Step 2/3: TinyLlama initialized = $modelReady")
             if (!modelReady) {
-                Log.e(TAG, "Failed to initialize TinyLlama service")
+                Log.e(TAG, "FAILED at Step 2: TinyLlama service initialization failed - check model file and native library")
                 return false
             }
             
             // 3. Initialize Vosk STT
             // Use suspendCancellableCoroutine to wait for initialization
+            Log.d(TAG, "Step 3/3: Initializing Vosk STT...")
             val voskInitialized = suspendCancellableCoroutine<Boolean> { continuation ->
                 voskSTT = VoskSTT(
                     context = context,
@@ -120,17 +124,17 @@ class LocalVoiceLLMService(private val context: Context) {
                 )
                 
                 voskSTT?.initialize { success ->
+                    Log.d(TAG, "Step 3/3: Vosk callback received, success = $success")
                     if (continuation.isActive) {
                         continuation.resume(success)
                     }
                 }
             }
             
+            Log.d(TAG, "Step 3/3: Vosk initialized = $voskInitialized")
             if (!voskInitialized) {
-                Log.e(TAG, "Vosk initialization failed")
+                Log.e(TAG, "FAILED at Step 3: Vosk initialization failed - check model files in assets/models/")
                 return false
-            } else {
-                Log.d(TAG, "Vosk initialized successfully")
             }
             
             isInitialized = true
@@ -174,21 +178,25 @@ class LocalVoiceLLMService(private val context: Context) {
             callbacks.onStatusChange("connected")
             
             // Initial greeting
-            val greeting = emergencyAssistant.getGreeting()
+            val greeting = "Hey Res!, How can I Help you today?"
             callbacks.onMessage("agent", greeting)
             
             // Clear and start transcript
-            transcriptBuilder.clear()
+            transcriptBuilder.setLength(0)
             transcriptBuilder.append("agent: $greeting\n")
             
             callbacks.onModeChange("speaking")
             
+            // Allow extra time for TTS service binding to fully complete
+            // The 'ttsInitialized' flag is set on client init, but service binding is async
+            delay(500)
+
             // Speak greeting
             streamingTTS?.speakToken(greeting)
             streamingTTS?.speakFinal()
             
             // Wait for greeting to finish (estimate) or just start listening
-            delay(2000) 
+            delay(2500) 
             
             startListening()
         }
@@ -211,7 +219,10 @@ class LocalVoiceLLMService(private val context: Context) {
      */
     private fun handlePartialSpeech(partial: String) {
         // If user speaks while assistant is speaking, interrupt!
-        if (streamingTTS?.isSpeaking() == true && partial.length > 2) {
+        // Use safe call on streamingTTS which handles its own exceptions
+        val isSpeaking = streamingTTS?.isSpeaking() ?: false
+        
+        if (isSpeaking && partial.length > 2) {
             Log.d(TAG, "Interruption detected: $partial")
             streamingTTS?.stop()
             callbacks?.onModeChange("listening")
@@ -317,13 +328,24 @@ class LocalVoiceLLMService(private val context: Context) {
         stopListening()
         streamingTTS?.stop()
         
-        val transcript = transcriptBuilder.toString()
-        if (transcript.isNotBlank()) {
-            interactionLogManager.saveLog(currentUserId, transcript, "OFFLINE")
+        // 1. Save Log FIRST - before cleanup
+        try {
+            val transcript = transcriptBuilder.toString()
+            if (transcript.isNotBlank()) {
+                Log.d(TAG, "Saving interaction log...")
+                interactionLogManager.saveLog(currentUserId, transcript, "OFFLINE")
+            } else {
+                Log.d(TAG, "Transcript empty, skipping save.")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error saving interaction log", e)
         }
         
-        callbacks?.onDisconnect()
+        // Use local val to avoid race conditions
+        val currentCallbacks = callbacks
         callbacks = null
+        
+        currentCallbacks?.onDisconnect()
     }
 
     fun cleanup() {

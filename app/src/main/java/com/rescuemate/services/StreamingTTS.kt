@@ -14,6 +14,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
+import android.os.RemoteException
 
 /**
  * StreamingTTS
@@ -34,37 +35,49 @@ class StreamingTTS(private val context: Context) {
     // Queue for parallel processing
     private val ttsQueue = LinkedBlockingQueue<String>()
     private val scope = CoroutineScope(Dispatchers.Default)
+    
+    // Lock for thread safety of token buffer
+    private val bufferLock = Any()
 
     suspend fun initialize(): Boolean = suspendCancellableCoroutine { continuation ->
+        Log.d(TAG, "Starting TTS initialization...")
+        
         if (isInitialized) {
+            Log.d(TAG, "TTS already initialized, returning true")
             continuation.resume(true)
             return@suspendCancellableCoroutine
         }
         
         try {
+            Log.d(TAG, "Creating TextToSpeech instance...")
             tts = TextToSpeech(context) { status ->
+                Log.d(TAG, "TTS onInit callback received, status = $status (SUCCESS=${TextToSpeech.SUCCESS}, ERROR=${TextToSpeech.ERROR})")
+                
                 if (status == TextToSpeech.SUCCESS) {
                     tts?.let {
-                        it.language = Locale.US
-                        it.setSpeechRate(1.1f) // Slightly faster for conversational feel
+                        val langResult = it.setLanguage(Locale.US)
+                        Log.d(TAG, "TTS setLanguage result: $langResult (LANG_AVAILABLE=${TextToSpeech.LANG_AVAILABLE})")
+                        it.setSpeechRate(1.1f)
 
                         it.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
                             override fun onStart(utteranceId: String?) {}
                             override fun onDone(utteranceId: String?) {}
-                            override fun onError(utteranceId: String?) {}
+                            override fun onError(utteranceId: String?) {
+                                Log.e(TAG, "TTS utterance error: $utteranceId")
+                            }
                         })
                     }
                     isInitialized = true
-                    Log.d(TAG, "TTS Initialized")
+                    Log.d(TAG, "SUCCESS: TTS Initialized")
                     startQueueProcessor()
                     if (continuation.isActive) continuation.resume(true)
                 } else {
-                    Log.e(TAG, "TTS Initialization failed")
+                    Log.e(TAG, "FAILED: TTS Initialization failed with status $status - ensure device has TTS engine installed")
                     if (continuation.isActive) continuation.resume(false)
                 }
             }
         } catch (e: Exception) {
-             Log.e(TAG, "TTS init crashed", e)
+             Log.e(TAG, "FAILED: TTS init crashed: ${e.message}", e)
              if (continuation.isActive) continuation.resume(false)
         }
     }
@@ -75,11 +88,15 @@ class StreamingTTS(private val context: Context) {
                 try {
                     val sentence = ttsQueue.take() // Blocks until item available
                     if (sentence.isNotBlank()) {
-                         withContext(Dispatchers.Main) {
-                            try {
+                        try {
+                            if (isInitialized && tts != null) {
                                 tts?.speak(sentence, TextToSpeech.QUEUE_ADD, null, UUID.randomUUID().toString())
-                            } catch (e: Exception) {
-                                Log.e(TAG, "Error speaking: ${e.message}")
+                            } else {
+                                Log.w(TAG, "TTS not ready, dropping sentence: $sentence")
+                            }
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Error speaking: ${e.message}")
+                            if (e is android.os.DeadObjectException || e.message?.contains("DeadObject") == true) {
                                 isInitialized = false
                             }
                         }
@@ -97,17 +114,19 @@ class StreamingTTS(private val context: Context) {
     fun speakToken(token: String) {
         if (!isInitialized) return
         
-        tokenBuffer.append(token)
-        
-        // Speak when we have a complete sentence or meaningful phrase
-        if (shouldSpeak(tokenBuffer.toString())) {
-            val textToSpeak = tokenBuffer.toString().trim()
+        synchronized(bufferLock) {
+            tokenBuffer.append(token)
             
-            if (textToSpeak.isNotEmpty()) {
-                ttsQueue.offer(textToSpeak)
+            // Speak when we have a complete sentence or meaningful phrase
+            if (shouldSpeak(tokenBuffer.toString())) {
+                val textToSpeak = tokenBuffer.toString().trim()
+                
+                if (textToSpeak.isNotEmpty()) {
+                    ttsQueue.offer(textToSpeak)
+                }
+                
+                tokenBuffer.clear()
             }
-            
-            tokenBuffer.clear()
         }
     }
     
@@ -132,12 +151,14 @@ class StreamingTTS(private val context: Context) {
      * Flush remaining buffer (called at end of stream)
      */
     fun speakFinal() {
-        if (tokenBuffer.isNotEmpty()) {
-            val text = tokenBuffer.toString().trim()
-            if (text.isNotEmpty()) {
-                ttsQueue.offer(text)
+        synchronized(bufferLock) {
+            if (tokenBuffer.isNotEmpty()) {
+                val text = tokenBuffer.toString().trim()
+                if (text.isNotEmpty()) {
+                    ttsQueue.offer(text)
+                }
+                tokenBuffer.clear()
             }
-            tokenBuffer.clear()
         }
     }
     
@@ -146,7 +167,9 @@ class StreamingTTS(private val context: Context) {
      */
     fun stop() {
         ttsQueue.clear()
-        tokenBuffer.clear()
+        synchronized(bufferLock) {
+            tokenBuffer.clear()
+        }
         try {
             if (isInitialized && tts != null) {
                 tts?.stop()
@@ -154,7 +177,7 @@ class StreamingTTS(private val context: Context) {
         } catch (e: Exception) {
             Log.e(TAG, "Error stopping TTS", e)
             // If stop fails, it might be dead
-            if (e.message?.contains("DeadObject") == true) {
+            if (e is android.os.DeadObjectException || e.message?.contains("DeadObject") == true) {
                 isInitialized = false
             }
         }
@@ -163,16 +186,23 @@ class StreamingTTS(private val context: Context) {
     fun shutdown() {
         stop()
         tts?.shutdown()
+        tts = null
+        isInitialized = false
     }
     
     fun isSpeaking(): Boolean {
         return try {
-            if (!isInitialized || tts == null) return false
+            // Add null check and initialization check
+            if (!isInitialized || tts == null) {
+                return false
+            }
             tts?.isSpeaking ?: false
         } catch (e: Exception) {
-            Log.w(TAG, "isSpeaking failed: ${e.message}") // Changed to warning
-            if (e.message?.contains("DeadObject") == true) {
+            // Catch DeadObjectException, RemoteException, and any other IPC errors
+            Log.w(TAG, "isSpeaking failed safely: ${e.javaClass.simpleName} - ${e.message}")
+            if (e is android.os.DeadObjectException || e is RemoteException || e.message?.contains("DeadObject") == true) {
                  isInitialized = false
+                 // Optionally try to re-init or just fail gracefully
             }
             false
         }

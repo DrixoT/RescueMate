@@ -31,10 +31,13 @@ class InteractionLogManager(private val context: Context) {
             try {
                 Log.d(TAG, "Generating summary for log with TinyLlama...")
                 
-                // Initialize if needed (safe to call multiple times)
+                
                 tinyLlamaService.initialize()
                 
-                val systemPrompt = "You are a medical assistant. Summarize the following conversation in one short sentence. Focus on symptoms and actions."
+                val systemPrompt = "You are a medical assistant. Analyze the following conversation and provide a response in exactly this format:\n" +
+                        "Title: [Symptom Name Only] (e.g. 'Semi-Handicap', 'Chest Pain'). Max 3-4 words. NO extra text.\n" +
+                        "Summary: [Detailed clinical summary of symptoms, actions, and advice. Do not miss any medical details.]\n" +
+                        "Do not include transcripts or other text."
                 val generatedSummary = tinyLlamaService.generateSimpleResponse(transcript, systemPrompt)
                 
                 if (!generatedSummary.isNullOrBlank()) {
