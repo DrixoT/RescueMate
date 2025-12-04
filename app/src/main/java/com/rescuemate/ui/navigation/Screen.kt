@@ -17,5 +17,7 @@ sealed class Screen(val route: String) {
     object PermissionRequest : Screen("permissionRequest")
     object SetupWizard : Screen("setupWizard")
     object Logs : Screen("logs")
+    object EmergencyConfig : Screen("emergency_config")
+    object EmergencyNotification : Screen("emergency_notification")
 }
 

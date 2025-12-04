@@ -16,6 +16,10 @@ import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.auth.GoogleAuthProvider
 import com.rescuemate.R
 import com.rescuemate.data.UserPreferences
+import com.rescuemate.data.repository.FCMRepository
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 
 import android.app.Activity
@@ -27,6 +31,7 @@ import java.util.concurrent.TimeUnit
 class AuthRepository(private val context: Context) {
     private val auth: FirebaseAuth = FirebaseAuth.getInstance()
     private val userPrefs = UserPreferences(context)
+    private val fcmRepository = FCMRepository(context)
     private val googleSignInClient: GoogleSignInClient
 
     init {
@@ -309,6 +314,36 @@ class AuthRepository(private val context: Context) {
             
             userPrefs.setUserId(user.uid)
             Log.d("AuthRepository", "User ID set: ${user.uid}")
+            
+            // Register FCM token after successful login with retry logic
+            CoroutineScope(Dispatchers.IO).launch {
+                var retryCount = 0
+                val maxRetries = 3
+                var success = false
+                
+                while (retryCount < maxRetries && !success) {
+                    try {
+                        success = fcmRepository.registerToken()
+                        if (!success && retryCount < maxRetries - 1) {
+                            retryCount++
+                            Log.d("AuthRepository", "FCM token registration failed, retrying ($retryCount/$maxRetries)...")
+                            kotlinx.coroutines.delay(2000 * retryCount) // Exponential backoff: 2s, 4s, 6s
+                        }
+                    } catch (e: Exception) {
+                        retryCount++
+                        Log.e("AuthRepository", "FCM token registration error (attempt $retryCount/$maxRetries)", e)
+                        if (retryCount < maxRetries) {
+                            kotlinx.coroutines.delay(2000 * retryCount)
+                        }
+                    }
+                }
+                
+                if (!success) {
+                    Log.w("AuthRepository", "FCM token registration failed after $maxRetries attempts")
+                } else {
+                    Log.d("AuthRepository", "FCM token registered successfully")
+                }
+            }
             
         } catch (e: Exception) {
             Log.e("AuthRepository", "Failed to update local user data", e)

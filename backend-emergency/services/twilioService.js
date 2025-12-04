@@ -37,6 +37,23 @@ async function makeEmergencyCall(
                          healthSummary?.match(/experiencing[^.]*/i)?.[0] || 
                          'an emergency situation';
 
+        // Extract alert reason from emergencyDetails or healthSummary for pre-reported illness check
+        let alertReason = null;
+        if (emergencyDetails && typeof emergencyDetails === 'string') {
+            // Parse from emergencyDetails string (format: "Alert Reason: ...")
+            const alertMatch = emergencyDetails.match(/Alert Reason:\s*([^\n]+)/i);
+            if (alertMatch) {
+                alertReason = alertMatch[1].trim();
+            }
+        }
+        if (!alertReason && healthSummary) {
+            // Try to extract from healthSummary
+            const summaryMatch = healthSummary.match(/experiencing[^.]*/i);
+            if (summaryMatch) {
+                alertReason = summaryMatch[0].replace(/experiencing\s*/i, '').trim();
+            }
+        }
+
         // Generate ElevenLabs voice message
         const voiceResult = await elevenLabsService.generateEmergencyCallVoice({
             userName,
@@ -44,7 +61,9 @@ async function makeEmergencyCall(
             condition,
             location: locationLink || 'Location unavailable',
             medicalInfo,
-            contactName
+            contactName,
+            alertReason,
+            healthSummary
         });
 
         let twimlUrl;

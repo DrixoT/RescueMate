@@ -221,18 +221,23 @@ fun HomeDashboard(
     LaunchedEffect(Unit) {
         while (true) {
             try {
+                // Check if monitoring should be active
                 isMonitoringActive = checkServiceRunning(context)
-                val prefs = context.getSharedPreferences(EmergencyConstants.PREF_NAME_EMERGENCY, Context.MODE_PRIVATE)
-                val savedHeartRate = prefs.getInt("current_heart_rate", 0)
-                val lastUpdate = prefs.getLong("last_heart_rate_update", 0)
-                val timeSinceUpdate = System.currentTimeMillis() - lastUpdate
                 
-                currentHeartRate = if (savedHeartRate > 0 && timeSinceUpdate < 30000) {
-                    savedHeartRate
-                } else if (isMonitoringActive) {
-                    null
+                // Ensure state consistency
+                if (!isMonitoringActive) {
+                    currentHeartRate = null
                 } else {
-                    null
+                    val prefs = context.getSharedPreferences(EmergencyConstants.PREF_NAME_EMERGENCY, Context.MODE_PRIVATE)
+                    val savedHeartRate = prefs.getInt("current_heart_rate", 0)
+                    val lastUpdate = prefs.getLong("last_heart_rate_update", 0)
+                    val timeSinceUpdate = System.currentTimeMillis() - lastUpdate
+                    
+                    currentHeartRate = if (savedHeartRate > 0 && timeSinceUpdate < 30000) {
+                        savedHeartRate
+                    } else {
+                        null
+                    }
                 }
                 
                 if (emergencyManager != null) {
@@ -394,7 +399,11 @@ fun HomeDashboard(
                         onStopMonitoring = {
                             try {
                                 stopMonitoringService(context)
+                                // Force immediate state update
+                                val prefs = context.getSharedPreferences(EmergencyConstants.PREF_NAME_EMERGENCY, Context.MODE_PRIVATE)
+                                prefs.edit().putBoolean("service_running", false).apply()
                                 isMonitoringActive = false
+                                currentHeartRate = null // Clear data
                                 toastMessage = "Monitoring Stopped"
                             } catch (e: Exception) {
                                 Log.e("HomeDashboard", "Failed to stop monitoring", e)
@@ -414,6 +423,11 @@ fun HomeDashboard(
                         PlanetarySOSButton(
                             onClick = { /* Handled by hold/tap */ },
                             onTap = {
+                                // Prevent normal voice conversation during SOS confirmation
+                                if (showSOSConfirmation) {
+                                    return@PlanetarySOSButton
+                                }
+                                
                                 val isConnecting = conversationStatus == "connecting"
                                 val isActive = isVoiceConversationActive || conversationalService?.isActive() == true || isConnecting
 
@@ -512,6 +526,40 @@ fun HomeDashboard(
                                                         ?: com.rescuemate.emergency.data.MedicalInfo(userId = userId)
                                                 )
                                                 emergencyManager.triggerManualEmergency(userId, userInfo)
+                                                
+                                                // Start emergency voice conversation with emergency agent
+                                                if (conversationalService != null) {
+                                                    val emergencyAgentId = com.rescuemate.BuildConfig.ELEVEN_EMERGENCY_AGENT_ID
+                                                    if (emergencyAgentId.isNotBlank() && emergencyAgentId != "YOUR_AGENT_ID_HERE") {
+                                                        kotlinx.coroutines.withContext(Dispatchers.Main) {
+                                                            conversationStatus = "connecting"
+                                                            startVoiceConversation(
+                                                                context = context,
+                                                                conversationalService = conversationalService,
+                                                                onSuccess = { 
+                                                                    isVoiceConversationActive = true 
+                                                                    toastMessage = "Emergency Voice Connected"
+                                                                },
+                                                                onModeChange = { aiConversationMode = it },
+                                                                onStatusChange = { conversationStatus = it },
+                                                                onMessage = { _, _ -> },
+                                                                onError = { 
+                                                                    errorMessage = it
+                                                                    showErrorDialog = true
+                                                                },
+                                                                onDisconnect = { 
+                                                                    isVoiceConversationActive = false 
+                                                                    toastMessage = "Emergency Voice Disconnected"
+                                                                },
+                                                                onCanSendFeedback = {},
+                                                                onAudioLevelChange = { aiAudioLevel = it },
+                                                                agentId = emergencyAgentId
+                                                            )
+                                                        }
+                                                    } else {
+                                                        Log.w("SOS", "Emergency agent ID not configured")
+                                                    }
+                                                }
                                             } catch (e: Exception) {
                                                 Log.e("SOS", "Error triggering emergency", e)
                                             }
@@ -570,6 +618,40 @@ fun HomeDashboard(
                                         medicalInfo = com.rescuemate.emergency.data.MedicalInfo(userId = userId) // Default empty medical info
                                     )
                             emergencyManager?.triggerManualEmergency(userId, userInfo)
+                            
+                            // Start emergency voice conversation with emergency agent
+                            if (conversationalService != null) {
+                                val emergencyAgentId = com.rescuemate.BuildConfig.ELEVEN_EMERGENCY_AGENT_ID
+                                if (emergencyAgentId.isNotBlank() && emergencyAgentId != "YOUR_AGENT_ID_HERE") {
+                                    kotlinx.coroutines.withContext(Dispatchers.Main) {
+                                        conversationStatus = "connecting"
+                                        startVoiceConversation(
+                                            context = context,
+                                            conversationalService = conversationalService,
+                                            onSuccess = { 
+                                                isVoiceConversationActive = true 
+                                                toastMessage = "Emergency Voice Connected"
+                                            },
+                                            onModeChange = { aiConversationMode = it },
+                                            onStatusChange = { conversationStatus = it },
+                                            onMessage = { _, _ -> },
+                                            onError = { 
+                                                errorMessage = it
+                                                showErrorDialog = true
+                                            },
+                                            onDisconnect = { 
+                                                isVoiceConversationActive = false 
+                                                toastMessage = "Emergency Voice Disconnected"
+                                            },
+                                            onCanSendFeedback = {},
+                                            onAudioLevelChange = { aiAudioLevel = it },
+                                            agentId = emergencyAgentId
+                                        )
+                                    }
+                                } else {
+                                    Log.w("SOS", "Emergency agent ID not configured")
+                                }
+                            }
                         } catch (e: Exception) {
                             Log.e("SOS", "Error", e)
                         }
@@ -578,6 +660,14 @@ fun HomeDashboard(
                 onDismiss = {
                     autoConfirmJob?.cancel()
                     showSOSConfirmation = false
+                    // End emergency voice conversation if it was started
+                    if (isVoiceConversationActive && conversationalService != null) {
+                        conversationalService.endConversation()
+                        isVoiceConversationActive = false
+                        conversationStatus = ""
+                        aiConversationMode = "idle"
+                        toastMessage = "Emergency cancelled"
+                    }
                 },
                 icon = {
                     RotatingStar(modifier = Modifier.size(48.dp), color = Color(0xFFFF5252))
@@ -953,11 +1043,12 @@ private fun startVoiceConversation(
     onError: (String) -> Unit,
     onDisconnect: () -> Unit,
     onCanSendFeedback: (Boolean) -> Unit,
-    onAudioLevelChange: (Float) -> Unit
+    onAudioLevelChange: (Float) -> Unit,
+    agentId: String? = null
 ) {
     val prefs = context.getSharedPreferences("voice_ai_prefs", Context.MODE_PRIVATE)
-    val agentId = prefs.getString("agent_id", com.rescuemate.BuildConfig.ELEVEN_AGENT_ID) 
-        ?: com.rescuemate.BuildConfig.ELEVEN_AGENT_ID
+    val finalAgentId = agentId ?: (prefs.getString("agent_id", com.rescuemate.BuildConfig.ELEVEN_AGENT_ID) 
+        ?: com.rescuemate.BuildConfig.ELEVEN_AGENT_ID)
     val voiceId = prefs.getString("selected_voice_id", null)
     
     // Get userId for logging from UserPreferences for consistency
@@ -965,7 +1056,7 @@ private fun startVoiceConversation(
     val userId = userPrefs.getUserId()
 
     conversationalService.startConversation(
-        agentId = agentId,
+        agentId = finalAgentId,
         voiceId = voiceId,
         userId = userId,
         callbacks = object : ElevenLabsConversationalService.ConversationCallbacks {

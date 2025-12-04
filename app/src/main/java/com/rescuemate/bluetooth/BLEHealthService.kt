@@ -9,12 +9,15 @@ import android.bluetooth.BluetoothGattDescriptor
 import android.bluetooth.BluetoothGattService
 import android.bluetooth.BluetoothManager
 import android.bluetooth.BluetoothProfile
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import android.bluetooth.le.BluetoothLeScanner
 import android.bluetooth.le.ScanCallback
 import android.bluetooth.le.ScanFilter
 import android.bluetooth.le.ScanResult
 import android.bluetooth.le.ScanSettings
-import android.content.Context
 import android.os.Build
 import android.os.ParcelUuid
 import android.util.Log
@@ -62,6 +65,8 @@ class BLEHealthService(private val context: Context) {
     private var connectedDevice: BluetoothDevice? = null
     private var isScanning = false
     private var isConnected = false
+    private var isBonding = false
+    private var bondingReceiver: BroadcastReceiver? = null
 
     // Callbacks
     var onHeartRateUpdate: ((Int) -> Unit)? = null
@@ -116,6 +121,75 @@ class BLEHealthService(private val context: Context) {
     }
 
     /**
+     * Check if device requires bonding
+     */
+    private fun requiresBonding(device: BluetoothDevice): Boolean {
+        val bondState = device.bondState
+        return bondState == BluetoothDevice.BOND_NONE
+    }
+
+    /**
+     * Setup bonding receiver to handle bonding state changes
+     */
+    private fun setupBondingReceiver(device: BluetoothDevice) {
+        bondingReceiver = object : BroadcastReceiver() {
+            override fun onReceive(context: Context, intent: Intent) {
+                val action = intent.action
+                if (BluetoothDevice.ACTION_BOND_STATE_CHANGED == action) {
+                    val bondDevice = intent.getParcelableExtra<BluetoothDevice>(BluetoothDevice.EXTRA_DEVICE)
+                    if (bondDevice?.address == device.address) {
+                        val bondState = intent.getIntExtra(BluetoothDevice.EXTRA_BOND_STATE, BluetoothDevice.BOND_NONE)
+                        val previousBondState = intent.getIntExtra(BluetoothDevice.EXTRA_PREVIOUS_BOND_STATE, BluetoothDevice.BOND_NONE)
+                        
+                        when (bondState) {
+                            BluetoothDevice.BOND_BONDED -> {
+                                Log.d(TAG, "Device bonded successfully: ${device.address}")
+                                isBonding = false
+                                // Try connecting again after bonding
+                                connectAfterBonding(device)
+                            }
+                            BluetoothDevice.BOND_BONDING -> {
+                                Log.d(TAG, "Device bonding in progress: ${device.address}")
+                                isBonding = true
+                            }
+                            BluetoothDevice.BOND_NONE -> {
+                                if (previousBondState == BluetoothDevice.BOND_BONDING) {
+                                    Log.e(TAG, "Bonding failed for device: ${device.address}")
+                                    isBonding = false
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        val filter = IntentFilter(BluetoothDevice.ACTION_BOND_STATE_CHANGED)
+        context.registerReceiver(bondingReceiver, filter)
+    }
+
+    /**
+     * Connect after bonding is complete
+     */
+    private fun connectAfterBonding(device: BluetoothDevice) {
+        try {
+            // Small delay to ensure bonding is fully complete
+            Thread.sleep(500)
+            
+            connectedDevice = device
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                bluetoothGatt = device.connectGatt(context, false, gattCallback, BluetoothDevice.TRANSPORT_LE)
+            } else {
+                bluetoothGatt = device.connectGatt(context, false, gattCallback)
+            }
+            
+            Log.d(TAG, "Connecting to bonded device: ${device.name} (${device.address})")
+        } catch (e: Exception) {
+            Log.e(TAG, "Error connecting after bonding", e)
+        }
+    }
+
+    /**
      * Connect to a BLE device
      */
     fun connect(device: BluetoothDevice): Boolean {
@@ -127,6 +201,28 @@ class BLEHealthService(private val context: Context) {
         try {
             disconnect() // Disconnect from previous device if any
 
+            // Small delay to ensure disconnect cleanup completes
+            Thread.sleep(200)
+
+            // Check if device requires bonding
+            if (requiresBonding(device)) {
+                Log.d(TAG, "Device requires bonding: ${device.address}")
+                setupBondingReceiver(device)
+                
+                // Attempt to create bond
+                val bondResult = device.createBond()
+                if (bondResult) {
+                    Log.d(TAG, "Bonding initiated for device: ${device.name} (${device.address})")
+                    isBonding = true
+                    connectedDevice = device
+                    return true
+                } else {
+                    Log.e(TAG, "Failed to initiate bonding for device: ${device.address}")
+                    cleanupBondingReceiver()
+                    return false
+                }
+            } else {
+                // Device already bonded or doesn't require bonding
             connectedDevice = device
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                 bluetoothGatt = device.connectGatt(context, false, gattCallback, BluetoothDevice.TRANSPORT_LE)
@@ -136,9 +232,25 @@ class BLEHealthService(private val context: Context) {
             
             Log.d(TAG, "Connecting to device: ${device.name} (${device.address})")
             return true
+            }
         } catch (e: Exception) {
             Log.e(TAG, "Error connecting to device", e)
+            cleanupBondingReceiver()
             return false
+        }
+    }
+
+    /**
+     * Cleanup bonding receiver
+     */
+    private fun cleanupBondingReceiver() {
+        try {
+            bondingReceiver?.let {
+                context.unregisterReceiver(it)
+                bondingReceiver = null
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error cleaning up bonding receiver", e)
         }
     }
 
@@ -147,12 +259,21 @@ class BLEHealthService(private val context: Context) {
      */
     fun disconnect() {
         try {
+            val wasConnected = isConnected
+            cleanupBondingReceiver()
+            
+            if (bluetoothGatt != null) {
             bluetoothGatt?.disconnect()
             bluetoothGatt?.close()
+            }
             bluetoothGatt = null
             connectedDevice = null
             isConnected = false
+            isBonding = false
+            // Only invoke callback if we were actually connected
+            if (wasConnected) {
             onConnectionStateChange?.invoke(false)
+            }
             Log.d(TAG, "Disconnected from device")
         } catch (e: Exception) {
             Log.e(TAG, "Error disconnecting", e)
@@ -170,22 +291,64 @@ class BLEHealthService(private val context: Context) {
     fun getConnectedDevice(): BluetoothDevice? = connectedDevice
 
     /**
+     * Get human-readable error message for GATT status code
+     */
+    private fun getGattErrorMessage(status: Int): String {
+        return when (status) {
+            BluetoothGatt.GATT_SUCCESS -> "Success"
+            0x01 -> "Invalid handle"
+            0x02 -> "Read not permitted"
+            0x03 -> "Write not permitted"
+            0x04 -> "Invalid PDU"
+            0x05 -> "Insufficient authentication"
+            0x06 -> "Request not supported"
+            0x07 -> "Invalid offset"
+            0x08 -> "Insufficient authorization"
+            0x09 -> "Prepare queue full"
+            0x0A -> "Attribute not found"
+            0x0B -> "Attribute not long"
+            0x0C -> "Insufficient encryption key size"
+            0x0D -> "Invalid attribute length"
+            0x0E -> "Unlikely error"
+            0x0F -> "Insufficient encryption"
+            0x10 -> "Unsupported group type"
+            0x11 -> "Insufficient resources"
+            0x85 -> "Connection timeout"
+            0x86 -> "Connection failed to establish"
+            0x101 -> "Device disconnected"
+            else -> "Unknown error (code: $status)"
+        }
+    }
+
+    /**
      * GATT Callback for BLE communication
      */
     private val gattCallback = object : BluetoothGattCallback() {
         override fun onConnectionStateChange(gatt: BluetoothGatt, status: Int, newState: Int) {
-            when (newState) {
-                BluetoothProfile.STATE_CONNECTED -> {
-                    Log.d(TAG, "GATT connected")
+            when {
+                status != BluetoothGatt.GATT_SUCCESS -> {
+                    val errorMsg = getGattErrorMessage(status)
+                    Log.e(TAG, "GATT connection failed with status: $status ($errorMsg)")
+                    // Don't process state change on failure - clean up state
+                    isConnected = false
+                    connectedDevice = null
+                    bluetoothGatt = null
+                    onConnectionStateChange?.invoke(false)
+                    return
+                }
+                newState == BluetoothProfile.STATE_CONNECTED -> {
+                    Log.d(TAG, "GATT connected successfully")
                     isConnected = true
                     onConnectionStateChange?.invoke(true)
                     
                     // Discover services
                     gatt.discoverServices()
                 }
-                BluetoothProfile.STATE_DISCONNECTED -> {
+                newState == BluetoothProfile.STATE_DISCONNECTED -> {
                     Log.d(TAG, "GATT disconnected")
                     isConnected = false
+                    bluetoothGatt = null
+                    connectedDevice = null
                     onConnectionStateChange?.invoke(false)
                 }
             }
@@ -193,10 +356,11 @@ class BLEHealthService(private val context: Context) {
 
         override fun onServicesDiscovered(gatt: BluetoothGatt, status: Int) {
             if (status == BluetoothGatt.GATT_SUCCESS) {
-                Log.d(TAG, "Services discovered")
+                Log.d(TAG, "Services discovered successfully")
                 setupHealthNotifications(gatt)
             } else {
-                Log.e(TAG, "Service discovery failed: $status")
+                val errorMsg = getGattErrorMessage(status)
+                Log.e(TAG, "Service discovery failed: $status ($errorMsg)")
             }
         }
 
@@ -243,6 +407,9 @@ class BLEHealthService(private val context: Context) {
                         onBatteryUpdate?.invoke(batteryLevel)
                     }
                 }
+            } else {
+                val errorMsg = getGattErrorMessage(status)
+                Log.e(TAG, "Characteristic read failed: $status ($errorMsg) for ${characteristic.uuid}")
             }
         }
     }
@@ -380,6 +547,7 @@ class BLEHealthService(private val context: Context) {
     fun cleanup() {
         stopScanning()
         disconnect()
+        cleanupBondingReceiver()
     }
 }
 

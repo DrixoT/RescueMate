@@ -29,6 +29,7 @@ fun SettingsScreen(
     onBack: () -> Unit,
     onNavigateToBluetooth: () -> Unit,
     onNavigateToVoiceAI: () -> Unit = {},
+    onNavigateToEmergencyConfig: () -> Unit = {},
     navController: NavHostController? = null
 ) {
     val context = LocalContext.current
@@ -96,6 +97,13 @@ fun SettingsScreen(
                     description = stringResource(R.string.sound_alerts_desc),
                     checked = soundAlerts,
                     onCheckedChange = { soundAlerts = it }
+                )
+                Divider(color = CosmicBorder)
+                SettingButton(
+                    icon = Icons.Default.Settings,
+                    title = "Emergency Configuration",
+                    description = "Configure emergency settings and simulation mode",
+                    onClick = onNavigateToEmergencyConfig
                 )
             }
 

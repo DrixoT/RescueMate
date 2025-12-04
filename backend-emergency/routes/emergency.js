@@ -7,7 +7,9 @@ const express = require('express');
 const router = express.Router();
 const twilioService = require('../services/twilioService');
 const elevenLabsService = require('../services/elevenLabsService');
+const fcmService = require('../services/fcmService');
 const Emergency = require('../models/Emergency');
+const UserFCMToken = require('../models/UserFCMToken');
 const logger = require('../utils/logger');
 
 /**
@@ -64,7 +66,8 @@ router.post('/contact-alert', async (req, res) => {
             healthData,
             location,
             userInfo,
-            timestamp
+            timestamp,
+            emergencyContacts
         } = req.body;
 
         // Validate required fields
@@ -95,6 +98,128 @@ router.post('/contact-alert', async (req, res) => {
             userId,
             emergencyType
         });
+
+        // Send FCM notifications to logged-in contacts
+        if (emergencyContacts && Array.isArray(emergencyContacts) && emergencyContacts.length > 0) {
+            try {
+                logger.info('Processing FCM notifications for emergency contacts', {
+                    totalContacts: emergencyContacts.length,
+                    contacts: emergencyContacts.map(c => ({
+                        name: c.name,
+                        phone: c.phoneNumber || c.phone,
+                        email: c.email
+                    }))
+                });
+                
+                const fcmTokens = [];
+                
+                // Query for FCM tokens matching emergency contacts
+                for (const contact of emergencyContacts) {
+                    // Handle both phoneNumber and phone fields, filter out empty strings
+                    const phoneNumber = (contact.phoneNumber || contact.phone || '').trim();
+                    const email = (contact.email || '').trim();
+                    
+                    logger.info('Searching for FCM tokens', {
+                        contactName: contact.name,
+                        phoneNumber: phoneNumber || '(empty)',
+                        email: email || '(empty)'
+                    });
+                    
+                    // Only search if we have at least phone or email (non-empty)
+                    if (phoneNumber || email) {
+                        const tokens = await UserFCMToken.findByContact(
+                            phoneNumber || null, 
+                            email || null
+                        );
+                        logger.info('FCM tokens found', {
+                            contactName: contact.name,
+                            tokensFound: tokens.length,
+                            tokens: tokens.map(t => ({
+                                userId: t.userId,
+                                phone: t.phoneNumber,
+                                email: t.email,
+                                lastActive: t.lastActive
+                            }))
+                        });
+                        
+                        tokens.forEach(token => {
+                            if (!fcmTokens.includes(token.fcmToken)) {
+                                fcmTokens.push(token.fcmToken);
+                            }
+                        });
+                    } else {
+                        logger.warn('Contact has no phone or email for FCM matching', {
+                            contactName: contact.name
+                        });
+                    }
+                }
+
+                logger.info('FCM notification summary', {
+                    totalTokens: fcmTokens.length,
+                    tokenPreview: fcmTokens.length > 0 ? fcmTokens.map(t => t.substring(0, 20) + '...') : []
+                });
+
+                // Send FCM notifications
+                if (fcmTokens.length > 0) {
+                    const emergencyData = {
+                        emergencyId: emergency._id.toString(),
+                        userId,
+                        userName: userInfo.name || 'User',
+                        emergencyType,
+                        alertReason: healthData?.alertReason || 'Emergency protocol initiated',
+                        location: location.googleMapsLink || location.address || 'Location unavailable',
+                        timestamp: timestamp || new Date().toISOString()
+                    };
+
+                    logger.info('Sending FCM notifications', {
+                        emergencyId: emergency._id,
+                        totalTokens: fcmTokens.length,
+                        emergencyData
+                    });
+
+                    const fcmResult = await fcmService.sendBulkEmergencyNotifications(fcmTokens, emergencyData);
+                    
+                    logger.info('FCM notifications sent', {
+                        emergencyId: emergency._id,
+                        totalTokens: fcmTokens.length,
+                        success: fcmResult.success,
+                        failed: fcmResult.failed,
+                        results: fcmResult.results.map(r => ({
+                            success: r.success,
+                            error: r.error,
+                            shouldRemoveToken: r.shouldRemoveToken
+                        }))
+                    });
+
+                    // Remove invalid tokens
+                    fcmResult.results.forEach(result => {
+                        if (result.shouldRemoveToken) {
+                            UserFCMToken.deleteOne({ fcmToken: result.token }).catch(err => {
+                                logger.error('Failed to remove invalid FCM token', err);
+                            });
+                        }
+                    });
+                } else {
+                    logger.warn('No FCM tokens found for any emergency contacts', {
+                        emergencyId: emergency._id,
+                        contactsChecked: emergencyContacts.length
+                    });
+                }
+            } catch (fcmError) {
+                // Don't fail the entire request if FCM fails
+                logger.error('Error sending FCM notifications', {
+                    error: fcmError.message,
+                    stack: fcmError.stack,
+                    emergencyId: emergency._id
+                });
+            }
+        } else {
+            logger.warn('No emergency contacts provided for FCM notifications', {
+                emergencyId: emergency._id,
+                hasContacts: !!emergencyContacts,
+                isArray: Array.isArray(emergencyContacts)
+            });
+        }
 
         res.json({
             success: true,

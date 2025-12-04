@@ -12,13 +12,33 @@ import androidx.navigation.compose.rememberNavController
 import com.rescuemate.data.UserPreferences
 import com.rescuemate.ui.screens.*
 import com.rescuemate.ui.screens.BluetoothPairingScreen as BTPairingScreen
+import com.rescuemate.ui.screens.EmergencyNotificationScreen
 
 @Composable
 fun RescueMateNavigation(
-    navController: NavHostController = rememberNavController()
+    navController: NavHostController = rememberNavController(),
+    intent: android.content.Intent? = null
 ) {
     val context = LocalContext.current
     val userPrefs = remember { UserPreferences(context) }
+    
+    // Handle FCM notification intent
+    androidx.compose.runtime.LaunchedEffect(intent) {
+        intent?.let { intent ->
+            if (intent.hasExtra("screen") && intent.getStringExtra("screen") == Screen.EmergencyNotification.route) {
+                navController.currentBackStackEntry?.savedStateHandle?.let { savedStateHandle ->
+                    savedStateHandle["emergencyId"] = intent.getStringExtra("emergencyId")
+                    savedStateHandle["userId"] = intent.getStringExtra("userId")
+                    savedStateHandle["userName"] = intent.getStringExtra("userName")
+                    savedStateHandle["emergencyType"] = intent.getStringExtra("emergencyType")
+                    savedStateHandle["alertReason"] = intent.getStringExtra("alertReason")
+                    savedStateHandle["location"] = intent.getStringExtra("location")
+                    savedStateHandle["timestamp"] = intent.getStringExtra("timestamp")
+                }
+                navController.navigate(Screen.EmergencyNotification.route)
+            }
+        }
+    }
     
     // Determine start destination based on login status with null safety
     val startDestination = try {
@@ -309,6 +329,9 @@ fun RescueMateNavigation(
                 onNavigateToVoiceAI = {
                     navController.navigate(Screen.VoiceAI.route)
                 },
+                onNavigateToEmergencyConfig = {
+                    navController.navigate(Screen.EmergencyConfig.route)
+                },
                 navController = navController
             )
         }
@@ -316,6 +339,27 @@ fun RescueMateNavigation(
         composable(Screen.Bluetooth.route) {
             BTPairingScreen(
                 onBack = {
+                    navController.popBackStack()
+                }
+            )
+        }
+
+        composable(Screen.EmergencyConfig.route) {
+            val emergencyPrefs = context.getSharedPreferences(
+                com.rescuemate.emergency.EmergencyConstants.PREF_NAME_EMERGENCY,
+                android.content.Context.MODE_PRIVATE
+            )
+            val userId = emergencyPrefs.getString("user_id", "user_${System.currentTimeMillis()}") ?: "user_${System.currentTimeMillis()}"
+            val userName = emergencyPrefs.getString("user_name", "User") ?: "User"
+            val userAge = emergencyPrefs.getInt("user_age", 0)
+            val userPhone = emergencyPrefs.getString("user_phone", "") ?: ""
+            
+            com.rescuemate.emergency.ui.EmergencyConfigurationScreen(
+                userId = userId,
+                userName = userName,
+                userAge = userAge,
+                userPhone = userPhone,
+                onNavigateBack = {
                     navController.popBackStack()
                 }
             )
@@ -446,6 +490,37 @@ fun RescueMateNavigation(
             InteractionLogsScreen(
                 userId = userId,
                 onBack = { navController.popBackStack() }
+            )
+        }
+
+        composable(
+            route = Screen.EmergencyNotification.route,
+            enterTransition = {
+                slideInVertically(initialOffsetY = { 1000 }, animationSpec = tween(300)) + fadeIn()
+            },
+            exitTransition = {
+                slideOutVertically(targetOffsetY = { 1000 }, animationSpec = tween(300)) + fadeOut()
+            }
+        ) { backStackEntry ->
+            val emergencyId = backStackEntry.savedStateHandle.get<String>("emergencyId")
+            val userId = backStackEntry.savedStateHandle.get<String>("userId")
+            val userName = backStackEntry.savedStateHandle.get<String>("userName")
+            val emergencyType = backStackEntry.savedStateHandle.get<String>("emergencyType")
+            val alertReason = backStackEntry.savedStateHandle.get<String>("alertReason")
+            val location = backStackEntry.savedStateHandle.get<String>("location")
+            val timestamp = backStackEntry.savedStateHandle.get<String>("timestamp")
+
+            EmergencyNotificationScreen(
+                emergencyId = emergencyId,
+                userId = userId,
+                userName = userName,
+                emergencyType = emergencyType,
+                alertReason = alertReason,
+                location = location,
+                timestamp = timestamp,
+                onBack = {
+                    navController.popBackStack()
+                }
             )
         }
     }

@@ -13,12 +13,14 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.navigation.compose.rememberNavController
 import androidx.core.content.ContextCompat
 import com.google.android.gms.maps.MapsInitializer
 import com.google.android.gms.maps.MapsInitializer.Renderer
 import com.google.android.gms.maps.OnMapsSdkInitializedCallback
 import com.rescuemate.BuildConfig
 import com.rescuemate.ui.navigation.RescueMateNavigation
+import com.rescuemate.ui.navigation.Screen
 import com.rescuemate.ui.theme.RescueMateTheme
 
 import android.content.Intent
@@ -27,6 +29,10 @@ import com.rescuemate.emergency.service.EmergencyBackgroundService
 import com.google.firebase.appcheck.FirebaseAppCheck
 import com.google.firebase.appcheck.debug.DebugAppCheckProviderFactory
 import com.google.firebase.FirebaseApp
+import com.rescuemate.data.repository.FCMRepository
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
 
@@ -53,6 +59,9 @@ class MainActivity : ComponentActivity() {
             DebugAppCheckProviderFactory.getInstance()
         )
 
+        // Initialize FCM token registration
+        initializeFCM()
+
         // Initialize Google Maps SDK
         initializeGoogleMaps()
 
@@ -65,7 +74,7 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-                    RescueMateNavigation()
+                    RescueMateNavigation(intent = intent)
                 }
             }
         }
@@ -140,6 +149,16 @@ class MainActivity : ComponentActivity() {
             requestPermissionLauncher.launch(permissionsToRequest.toTypedArray())
         } else {
             Log.d(TAG, "All critical permissions already granted")
+        }
+    }
+
+    /**
+     * Initialize FCM token registration
+     */
+    private fun initializeFCM() {
+        CoroutineScope(Dispatchers.IO).launch {
+            val fcmRepository = FCMRepository(this@MainActivity)
+            fcmRepository.registerToken()
         }
     }
 

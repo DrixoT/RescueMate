@@ -441,27 +441,20 @@ fun BluetoothDeviceCard(
                         style = MaterialTheme.typography.labelSmall,
                         color = Color(0xFF4CAF50)
                     )
-                    if (onDisconnectClick != null) {
-                        TextButton(onClick = onDisconnectClick) {
-                            Text(
-                                text = "Disconnect",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = Color(0xFFFF5252)
-                            )
-                        }
+                    // Button visibility fixed: Always show disconnect when connected
+                    Button(
+                        onClick = { onDisconnectClick?.invoke() },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color(0xFFFF5252)
+                        ),
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                        modifier = Modifier.height(32.dp)
+                    ) {
+                        Text(
+                            text = "Disconnect",
+                            style = MaterialTheme.typography.labelSmall
+                        )
                     }
-                }
-            } else if (!device.isPaired) {
-                Button(
-                    onClick = onPairClick,
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = CosmicPrimary
-                    )
-                ) {
-                    Text(
-                        text = "Connect",
-                        style = MaterialTheme.typography.labelSmall
-                    )
                 }
             } else {
                 Button(

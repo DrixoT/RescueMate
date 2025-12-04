@@ -17,6 +17,7 @@ const winston = require('winston');
 const emergencyRoutes = require('./routes/emergency');
 const twilioRoutes = require('./routes/twilio');
 const webhookRoutes = require('./routes/webhooks');
+const userRoutes = require('./routes/users');
 
 // Initialize Express app
 const app = express();
@@ -84,6 +85,7 @@ app.use('/api/audio', expressStatic(path.join(__dirname, 'temp'), {
 app.use('/api/emergency', emergencyRoutes);
 app.use('/api/twilio', twilioRoutes);
 app.use('/api/webhooks', webhookRoutes);
+app.use('/api/users', userRoutes);
 
 // Health check endpoint
 app.get('/health', (req, res) => {
@@ -106,6 +108,7 @@ app.get('/', (req, res) => {
             emergency: '/api/emergency',
             twilio: '/api/twilio',
             webhooks: '/api/webhooks',
+            users: '/api/users',
             health: '/health'
         }
     });

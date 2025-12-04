@@ -1,13 +1,16 @@
 package com.rescuemate.emergency
 
+import android.Manifest
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.util.Log
 import androidx.core.app.NotificationCompat
+import androidx.core.content.ContextCompat
 import com.rescuemate.R
 import com.rescuemate.data.UserPreferences
 import com.rescuemate.emergency.data.*
@@ -318,7 +321,24 @@ class EmergencyManager(private val context: Context) {
 
         // Check for Simulation Mode
         if (userPreferences.getSimulationMode()) {
-            Log.i("EmergencyManager", "🎭 SIMULATION MODE ACTIVE: Skipping backend, using direct device calls/SMS")
+            Log.i("EmergencyManager", "🎭 SIMULATION MODE ACTIVE: Sending FCM notifications first, then simulation calls/SMS")
+            
+            // Step 1: Send FCM notifications via backend (even in simulation mode)
+            if (networkMonitor.checkConnection()) {
+                Log.d("EmergencyManager", "🎭 Sim: Sending FCM notifications via backend")
+                val alertResult = twilioService.sendEmergencyContactAlert(event)
+                if (alertResult.isSuccess) {
+                    Log.d("EmergencyManager", "🎭 Sim: FCM notifications sent successfully")
+                    // Wait a moment for notifications to be delivered
+                    delay(2000) // 2 second delay for FCM delivery
+                } else {
+                    Log.w("EmergencyManager", "🎭 Sim: Failed to send FCM notifications: ${alertResult.exceptionOrNull()?.message}")
+                }
+            } else {
+                Log.w("EmergencyManager", "🎭 Sim: No network connection, skipping FCM notifications")
+            }
+            
+            // Step 2: Proceed with simulation SMS and calls
             notifySimulationContacts(event)
             return@withContext
         }
@@ -415,8 +435,11 @@ class EmergencyManager(private val context: Context) {
 
     /**
      * Handle simulation mode contacts (Direct SMS and Call)
+     * Note: FCM notifications should be sent before calling this function
      */
     private suspend fun notifySimulationContacts(event: EmergencyEvent) = withContext(Dispatchers.IO) {
+        Log.d("EmergencyManager", "🎭 Sim: Starting simulation SMS and calls")
+        
         val smsManager = android.telephony.SmsManager.getDefault()
         val message = buildFallbackSMSMessage(event) // Reuse fallback message for sim
         
@@ -436,24 +459,68 @@ class EmergencyManager(private val context: Context) {
             }
         }
 
-        // 2. Call Primary Contact directly
+        // 2. Wait a moment before making the call (to ensure notification was received)
+        delay(1000) // 1 second delay after SMS
+
+        // 3. Call Primary Contact directly (with improved error handling)
         val primaryContact = event.emergencyContacts.find { it.isPrimaryContact } 
             ?: event.emergencyContacts.firstOrNull()
             
         if (primaryContact != null) {
             try {
-                Log.d("EmergencyManager", "🎭 Sim: Calling ${primaryContact.name} directly")
+                Log.d("EmergencyManager", "🎭 Sim: Attempting to call ${primaryContact.name} at ${primaryContact.phoneNumber}")
+                
+                // Check if we have permission to make calls
+                val hasCallPermission = ContextCompat.checkSelfPermission(
+                    context,
+                    Manifest.permission.CALL_PHONE
+                ) == PackageManager.PERMISSION_GRANTED
+                
                 withContext(Dispatchers.Main) {
+                    try {
+                        if (hasCallPermission) {
+                            // Use ACTION_CALL if permission is granted (for real devices)
                     val intent = Intent(Intent.ACTION_CALL).apply {
                         data = Uri.parse("tel:${primaryContact.phoneNumber}")
                         flags = Intent.FLAG_ACTIVITY_NEW_TASK
                     }
                     context.startActivity(intent)
+                            Log.d("EmergencyManager", "🎭 Sim: Call intent started")
+                        } else {
+                            // Use ACTION_DIAL as fallback (safer, opens dialer without requiring permission)
+                            Log.w("EmergencyManager", "🎭 Sim: CALL_PHONE permission not granted, using ACTION_DIAL")
+                            val intent = Intent(Intent.ACTION_DIAL).apply {
+                                data = Uri.parse("tel:${primaryContact.phoneNumber}")
+                                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                            }
+                            context.startActivity(intent)
+                            Log.d("EmergencyManager", "🎭 Sim: Dialer opened")
+                        }
+                    } catch (e: SecurityException) {
+                        Log.e("EmergencyManager", "🎭 Sim: SecurityException when starting call intent", e)
+                        // Fallback to ACTION_DIAL if ACTION_CALL fails
+                        try {
+                            val intent = Intent(Intent.ACTION_DIAL).apply {
+                                data = Uri.parse("tel:${primaryContact.phoneNumber}")
+                                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                            }
+                            context.startActivity(intent)
+                            Log.d("EmergencyManager", "🎭 Sim: Fallback dialer opened")
+                        } catch (e2: Exception) {
+                            Log.e("EmergencyManager", "🎭 Sim: Failed to open dialer", e2)
+                        }
+                    } catch (e: Exception) {
+                        Log.e("EmergencyManager", "🎭 Sim: Failed to initiate call/dial", e)
+                        // Don't crash - just log the error
+                    }
                 }
             } catch (e: Exception) {
-                Log.e("EmergencyManager", "🎭 Sim: Failed to initiate direct call", e)
+                Log.e("EmergencyManager", "🎭 Sim: Exception in call attempt", e)
+                // Don't rethrow - prevent crash
             }
         }
+        
+        Log.d("EmergencyManager", "🎭 Sim: Simulation SMS and calls completed")
     }
 
     /**

@@ -401,6 +401,17 @@ class TwilioEmergencyService(private val context: Context) {
                 })
             })
             put("timestamp", request.timestamp)
+            
+            // Include emergency contacts for FCM notification matching
+            val contactsArray = org.json.JSONArray()
+            event.emergencyContacts.forEach { contact ->
+                contactsArray.put(JSONObject().apply {
+                    put("phoneNumber", contact.phoneNumber)
+                    put("email", contact.email ?: "")
+                    put("name", contact.name)
+                })
+            }
+            put("emergencyContacts", contactsArray)
         }.toString()
     }
 

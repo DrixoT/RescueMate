@@ -60,6 +60,7 @@ android {
         // Add BuildConfig fields from .env
         buildConfigField("String", "ELEVEN_API_KEY", "\"${envVariables["ELEVEN_API_KEY"] ?: ""}\"")
         buildConfigField("String", "ELEVEN_AGENT_ID", "\"${envVariables["ELEVEN_AGENT_ID"] ?: ""}\"")
+        buildConfigField("String", "ELEVEN_EMERGENCY_AGENT_ID", "\"${envVariables["ELEVEN_EMERGENCY_AGENT_ID"] ?: ""}\"")
         buildConfigField("String", "OPENAI_API_KEY", "\"${envVariables["OPENAI_API_KEY"] ?: ""}\"")
         buildConfigField("String", "GOOGLE_MAPS_API_KEY", "\"${envVariables["GOOGLE_MAPS_API_KEY"] ?: ""}\"")
         buildConfigField("String", "TWILIO_ACCOUNT_SID", "\"${envVariables["TWILIO_ACCOUNT_SID"] ?: ""}\"")
@@ -191,6 +192,7 @@ dependencies {
     implementation("com.google.firebase:firebase-storage")
     implementation("com.google.firebase:firebase-appcheck-debug")
     implementation("com.google.firebase:firebase-functions")
+    implementation("com.google.firebase:firebase-messaging")
     implementation("com.google.android.gms:play-services-auth:21.2.0")
 
     // Testing

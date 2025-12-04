@@ -113,9 +113,10 @@ async function textToSpeech(text, voiceId = ELEVEN_VOICE_ID) {
  * @param {string} condition - Emergency condition/type
  * @param {string} location - Location description or address
  * @param {object} medicalInfo - Medical information object
+ * @param {string} alertReason - Pre-reported illness or alert reason (optional)
  * @returns {string} Formatted emergency message script
  */
-function generateEmergencyMessage(userName, age, condition, location, medicalInfo = {}) {
+function generateEmergencyMessage(userName, age, condition, location, medicalInfo = {}, alertReason = null) {
     const medicalDetails = [];
     
     if (medicalInfo.bloodType) {
@@ -137,11 +138,25 @@ function generateEmergencyMessage(userName, age, condition, location, medicalInf
         medicalDetails.push(`Current medications: ${medNames}`);
     }
 
-    let script = `Emergency Alert from RescueMate. `;
-    script += `This is an automated emergency notification. `;
-    script += `${userName}, a ${age}-year-old, is experiencing: ${condition}. `;
+    // New message format: "User A Has initiated an SOS Protocol, Please reach out to them."
+    let script = `${userName} has initiated an SOS Protocol. Please reach out to them immediately. `;
     
-    if (location) {
+    // Check for pre-reported illness (from alertReason)
+    // alertReason contains specific symptoms/conditions reported before emergency activation
+    const hasPreReportedIllness = alertReason && 
+        alertReason.trim().length > 0 &&
+        !alertReason.toLowerCase().includes('manual emergency') &&
+        !alertReason.toLowerCase().includes('triggered by user');
+    
+    if (hasPreReportedIllness) {
+        // User reported illness before emergency protocol was activated
+        script += `Before activating the emergency protocol, ${userName} reported: ${alertReason}. `;
+    } else if (condition && condition !== 'an emergency situation' && condition !== 'Manual emergency triggered by user') {
+        // Current emergency condition
+        script += `${userName} is currently experiencing: ${condition}. `;
+    }
+    
+    if (location && location !== 'Location unavailable') {
         script += `Current location: ${location}. `;
     }
     
@@ -149,10 +164,9 @@ function generateEmergencyMessage(userName, age, condition, location, medicalInf
         script += `Medical information: ${medicalDetails.join('. ')}. `;
     }
     
-    script += `Immediate assistance is required. `;
-    script += `This message will be repeated and emergency contacts have been notified. `;
-    script += `Please respond if you can hear this message. `;
-    script += `If ${userName} is safe, please respond immediately to cancel this alert.`;
+    script += `This is an automated emergency notification from RescueMate. `;
+    script += `Please check on ${userName} immediately. `;
+    script += `If ${userName} is safe, please respond to cancel this alert.`;
 
     return script;
 }
@@ -170,11 +184,23 @@ async function generateEmergencyCallVoice(emergencyData) {
             condition,
             location,
             medicalInfo = {},
-            contactName
+            contactName,
+            alertReason = null,
+            healthSummary = null
         } = emergencyData;
 
-        // Generate script
-        const script = generateEmergencyMessage(userName, age, condition, location, medicalInfo);
+        // Extract alert reason from healthSummary if not provided directly
+        let extractedAlertReason = alertReason;
+        if (!extractedAlertReason && healthSummary) {
+            // Try to extract from healthSummary (format: "User is experiencing...")
+            const match = healthSummary.match(/experiencing[^.]*/i);
+            if (match) {
+                extractedAlertReason = match[0].replace(/experiencing\s*/i, '').trim();
+            }
+        }
+
+        // Generate script with alert reason for pre-reported illness check
+        const script = generateEmergencyMessage(userName, age, condition, location, medicalInfo, extractedAlertReason);
 
         // Generate audio
         const result = await textToSpeech(script);
