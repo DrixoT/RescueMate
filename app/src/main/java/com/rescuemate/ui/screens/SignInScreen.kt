@@ -250,20 +250,6 @@ fun SignInScreen(
                     }
                 )
                 SignInButton(
-                    text = stringResource(R.string.continue_with_apple),
-                    icon = Icons.Default.PhoneIphone, // Apple icon alternative
-                    onClick = {
-                        Log.d("SignInScreen", "Apple Sign-In clicked (Mock)")
-                        Toast.makeText(context, "Apple Sign-In (Demo Mode)", Toast.LENGTH_SHORT).show()
-                        handleSuccessfulSignIn("apple_user@rescuemate.com")
-                    }
-                )
-                SignInButton(
-                    text = stringResource(R.string.continue_with_phone),
-                    icon = Icons.Default.Phone,
-                    onClick = onPhoneLogin
-                )
-                SignInButton(
                     text = stringResource(R.string.continue_with_email),
                     icon = Icons.Default.Email,
                     onClick = onEmailLogin // Navigate to email login screen

@@ -21,6 +21,8 @@ import com.rescuemate.emergency.health.HealthMonitoringService
 import com.rescuemate.emergency.health.MockSensorDataService
 import kotlinx.coroutines.*
 
+import android.view.KeyEvent
+
 /**
  * Emergency Background Service
  * Continuously monitors for emergency triggers (health, shake, volume buttons, check-in)
@@ -31,6 +33,7 @@ class EmergencyBackgroundService : Service() {
     private lateinit var emergencyManager: EmergencyManager
     private lateinit var healthMonitoring: HealthMonitoringService
     private lateinit var smartwatchManager: SmartwatchManager
+    private lateinit var demoManager: DemoSimulationManager
     private val mockSensorService = MockSensorDataService()
 
     // Detection services
@@ -69,6 +72,9 @@ class EmergencyBackgroundService : Service() {
         const val EXTRA_ENABLE_HEALTH = "enable_health"
         const val EXTRA_OPENAI_API_KEY = "openai_api_key"  // Optional GPT-4 enhancement
         const val EXTRA_LLM_API_KEY = "llm_api_key"  // LLM API key for health analysis
+        
+        const val ACTION_VOLUME_EVENT = "com.rescuemate.emergency.VOLUME_EVENT"
+        const val EXTRA_KEY_EVENT = "key_event"
     }
 
     override fun onCreate() {
@@ -85,6 +91,7 @@ class EmergencyBackgroundService : Service() {
             emergencyManager = EmergencyManager(this)
             healthMonitoring = HealthMonitoringService(this)
             smartwatchManager = SmartwatchManager(this, healthMonitoring)
+            demoManager = DemoSimulationManager(this)
             android.util.Log.d("EmergencyBackgroundService", "Managers initialized")
 
             // Initialize mock sensor with baseline heart rate
@@ -241,6 +248,12 @@ class EmergencyBackgroundService : Service() {
             ACTION_CANCEL_EMERGENCY -> {
                 emergencyManager.userConfirmSafe()
             }
+            ACTION_VOLUME_EVENT -> {
+                val keyEvent = intent.getParcelableExtra<KeyEvent>(EXTRA_KEY_EVENT)
+                if (keyEvent != null) {
+                    volumeButtonDetector?.onKeyEvent(keyEvent.keyCode, keyEvent)
+                }
+            }
         }
 
         return START_STICKY
@@ -352,6 +365,16 @@ class EmergencyBackgroundService : Service() {
         userPhone: String,
         openAIApiKey: String?  // Renamed from llmApiKey for clarity
     ) {
+        // DEMO MODE: If no smartwatch is connected, start the Demo Simulation Manager
+        // This simulates anomalies (HR spike -> Fall) to demonstrate SOS functionality.
+        if (!smartwatchManager.isConnected()) {
+            android.util.Log.d("EmergencyBackgroundService", "⌚ No Smartwatch detected - Starting DEMO SIMULATION")
+            val userInfo = createUserInfo(userId, userName, userAge, userPhone)
+            demoManager.startDemo(userId, userInfo)
+            return
+        }
+
+        // REAL MONITORING: If smartwatch is connected, monitor real data
         healthMonitoringJob = scope.launch {
             while (isActive) {
                 try {
@@ -359,35 +382,24 @@ class EmergencyBackgroundService : Service() {
                     val activityLevel: HealthData.ActivityLevel
                     val isExercising: Boolean
                     
-                    // PRIORITY: Use smartwatch data if connected, otherwise fallback to mock
                     if (smartwatchManager.isConnected()) {
                         // Use real smartwatch data
                         val smartwatchHeartRate = smartwatchManager.getCurrentHeartRate()
                         if (smartwatchHeartRate != null) {
                             currentHeartRate = smartwatchHeartRate
-                            activityLevel = HealthData.ActivityLevel.UNKNOWN  // Smartwatch may not provide this
-                            isExercising = false  // Could be enhanced with accelerometer data
+                            activityLevel = HealthData.ActivityLevel.UNKNOWN
+                            isExercising = false
                             android.util.Log.d("EmergencyBackgroundService", 
                                 "📊 Smartwatch heart rate: $currentHeartRate BPM")
                         } else {
-                            // Smartwatch connected but no reading yet - skip this cycle
                             delay(EmergencyConstants.HEART_RATE_SAMPLE_INTERVAL_MS)
                             continue
                         }
                     } else {
-                        // Fallback to mock sensor data
-                        val reading = mockSensorService.generateHeartRate(
-                            variationLevel = 0.5f,
-                            anomalyProbability = mockAnomalyProbability,
-                            simulateExercise = simulateExercise
-                        )
-                        currentHeartRate = reading.heartRate
-                        activityLevel = reading.activityLevel.toHealthDataActivityLevel()
-                        isExercising = reading.isExercising
-                        android.util.Log.d("EmergencyBackgroundService", 
-                            "📊 Mock heart rate: $currentHeartRate BPM " +
-                            "(baseline: ${mockSensorService.getBaselineHeartRate()}, " +
-                            "anomaly: ${reading.isAnomaly})")
+                        // Watch disconnected during operation - Switch to Demo?
+                        // For safety, just wait for reconnection or stop
+                        delay(1000)
+                        continue
                     }
 
                     // Save current heart rate to SharedPreferences for UI display
@@ -564,6 +576,7 @@ class EmergencyBackgroundService : Service() {
 
         shakeDetection?.stopListening()
         fallDetection?.stopListening()
+        demoManager.stopDemo() // Stop demo if running
         healthMonitoringJob?.cancel()
         checkInMonitoringJob?.cancel()
 

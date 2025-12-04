@@ -6,6 +6,12 @@ import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
 import android.view.KeyEvent
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import android.util.Log
 import kotlin.math.sqrt
 
 /**
@@ -101,73 +107,71 @@ class ShakeDetectionService(
 
 /**
  * Volume Button Emergency Detection
- * Detects volume up + volume down pressed simultaneously 5 times
+ * Detects volume up + volume down pressed simultaneously for 2 seconds
  */
 class VolumeButtonEmergencyDetector(
     private val onEmergencyDetected: () -> Unit
 ) {
 
-    private val pressTimestamps = mutableListOf<Long>()
-    private var volumeUpPressed = false
-    private var volumeDownPressed = false
-    private var lastPressTime = 0L
+    private var isVolumeUpPressed = false
+    private var isVolumeDownPressed = false
+    private var bothPressedStartTime = 0L
 
-    companion object {
-        private const val PRESS_COUNT_THRESHOLD = 5
-        private const val PRESS_WINDOW_MS = 3000L
-        private const val SIMULTANEOUS_PRESS_THRESHOLD_MS = 200L
-    }
+    private val scope = CoroutineScope(Dispatchers.Main)
+    private var checkJob: Job? = null
 
-    /**
-     * Handle volume key event
-     */
     fun onKeyEvent(keyCode: Int, event: KeyEvent): Boolean {
-        if (event.action != KeyEvent.ACTION_DOWN) return false
+        // Only handle volume keys
+        if (keyCode != KeyEvent.KEYCODE_VOLUME_UP && keyCode != KeyEvent.KEYCODE_VOLUME_DOWN) {
+             return false
+        }
 
-        val currentTime = System.currentTimeMillis()
-
-        when (keyCode) {
-            KeyEvent.KEYCODE_VOLUME_UP -> {
-                volumeUpPressed = true
-                checkSimultaneousPress(currentTime)
+        if (event.action == KeyEvent.ACTION_DOWN) {
+            when (keyCode) {
+                KeyEvent.KEYCODE_VOLUME_UP -> isVolumeUpPressed = true
+                KeyEvent.KEYCODE_VOLUME_DOWN -> isVolumeDownPressed = true
             }
-            KeyEvent.KEYCODE_VOLUME_DOWN -> {
-                volumeDownPressed = true
-                checkSimultaneousPress(currentTime)
+        } else if (event.action == KeyEvent.ACTION_UP) {
+             when (keyCode) {
+                KeyEvent.KEYCODE_VOLUME_UP -> isVolumeUpPressed = false
+                KeyEvent.KEYCODE_VOLUME_DOWN -> isVolumeDownPressed = false
             }
         }
 
-        return false // Don't consume the event
+        checkState()
+        return false // Don't consume, let system handle volume
     }
 
-    private fun checkSimultaneousPress(currentTime: Long) {
-        if (volumeUpPressed && volumeDownPressed) {
-            // Both buttons pressed within threshold
-            if (currentTime - lastPressTime < SIMULTANEOUS_PRESS_THRESHOLD_MS || lastPressTime == 0L) {
-                pressTimestamps.add(currentTime)
-                lastPressTime = currentTime
-
-                // Remove old timestamps
-                pressTimestamps.removeAll { currentTime - it > PRESS_WINDOW_MS }
-
-                // Check if threshold met
-                if (pressTimestamps.size >= PRESS_COUNT_THRESHOLD) {
-                    onEmergencyDetected()
-                    pressTimestamps.clear()
+    private fun checkState() {
+        if (isVolumeUpPressed && isVolumeDownPressed) {
+            if (bothPressedStartTime == 0L) {
+                bothPressedStartTime = System.currentTimeMillis()
+                Log.d("VolumeDetector", "Both buttons pressed, starting timer...")
+                
+                checkJob?.cancel()
+                checkJob = scope.launch {
+                    delay(2000) // 2 seconds hold
+                    if (isVolumeUpPressed && isVolumeDownPressed) {
+                        Log.d("VolumeDetector", "Panic! Triggering emergency.")
+                        onEmergencyDetected()
+                        reset()
+                    }
                 }
             }
-
-            // Reset button states
-            volumeUpPressed = false
-            volumeDownPressed = false
+        } else {
+            if (bothPressedStartTime != 0L) {
+                 Log.d("VolumeDetector", "Buttons released, cancelling timer.")
+            }
+            bothPressedStartTime = 0L
+            checkJob?.cancel()
         }
     }
-
+    
     fun reset() {
-        pressTimestamps.clear()
-        volumeUpPressed = false
-        volumeDownPressed = false
-        lastPressTime = 0L
+        isVolumeUpPressed = false
+        isVolumeDownPressed = false
+        bothPressedStartTime = 0L
+        checkJob?.cancel()
     }
 }
 

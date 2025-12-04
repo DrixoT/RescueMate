@@ -177,8 +177,8 @@ class LocalVoiceLLMService(private val context: Context) {
             callbacks.onConnect(conversationId!!)
             callbacks.onStatusChange("connected")
             
-            // Initial greeting
-            val greeting = "Hey Res!, How can I Help you today?"
+            // Initial greeting - EXACT MATCH REQUIRED
+            val greeting = "Hey I'm Res, How can I help you today?"
             callbacks.onMessage("agent", greeting)
             
             // Clear and start transcript
@@ -188,15 +188,19 @@ class LocalVoiceLLMService(private val context: Context) {
             callbacks.onModeChange("speaking")
             
             // Allow extra time for TTS service binding to fully complete
-            // The 'ttsInitialized' flag is set on client init, but service binding is async
             delay(500)
+
+            // Stop listening before speaking to avoid echo
+            stopListening()
 
             // Speak greeting
             streamingTTS?.speakToken(greeting)
             streamingTTS?.speakFinal()
             
-            // Wait for greeting to finish (estimate) or just start listening
-            delay(2500) 
+            // Wait for greeting to finish (estimate based on length) or until speaking done
+            // Better approach: monitor isSpeaking or just wait a safe buffer
+            var waitTime = (greeting.length * 60).toLong() // approx 60ms per char
+            delay(waitTime.coerceAtLeast(1500)) 
             
             startListening()
         }
@@ -235,6 +239,13 @@ class LocalVoiceLLMService(private val context: Context) {
     private fun handleUserSpeech(text: String, confidence: Float = 1.0f) {
         if (!isActive || isProcessing) return
         if (text.isBlank()) return
+
+        // Cut command detection
+        if (text.lowercase().contains("stop") || text.lowercase().contains("cut") || text.lowercase().contains("bye")) {
+             Log.d(TAG, "User requested to cut conversation")
+             endConversation()
+             return
+        }
 
         Log.d(TAG, "User said: $text (Conf: $confidence)")
         callbacks?.onMessage("user", text)
@@ -367,5 +378,34 @@ class LocalVoiceLLMService(private val context: Context) {
          if (isActive) {
              handleUserSpeech(text)
          }
+    }
+
+    /**
+     * Test method to simulate conversation flow without physical voice input.
+     * Can be called from UI for verification.
+     */
+    fun testLocalConversationFlow() {
+        scope.launch {
+            Log.d(TAG, "🧪 Starting Local Conversation Flow Test")
+            
+            // 1. Simulate Agent Greeting (already happens on start, but let's assume it's done)
+            delay(2000)
+            
+            // 2. Simulate User Input
+            Log.d(TAG, "🧪 Simulating User Input: 'I am feeling dizzy'")
+            handleUserSpeech("I am feeling dizzy")
+            
+            delay(5000) // Wait for processing
+            
+            // 3. Simulate another User Input
+            Log.d(TAG, "🧪 Simulating User Input: 'Also my chest hurts'")
+            handleUserSpeech("Also my chest hurts")
+            
+            delay(5000)
+            
+            // 4. Simulate Cut/End
+            Log.d(TAG, "🧪 Simulating User Input: 'Bye'")
+            handleUserSpeech("Bye")
+        }
     }
 }

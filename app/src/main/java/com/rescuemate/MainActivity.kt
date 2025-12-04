@@ -21,6 +21,9 @@ import com.rescuemate.BuildConfig
 import com.rescuemate.ui.navigation.RescueMateNavigation
 import com.rescuemate.ui.theme.RescueMateTheme
 
+import android.content.Intent
+import android.view.KeyEvent
+import com.rescuemate.emergency.service.EmergencyBackgroundService
 import com.google.firebase.appcheck.FirebaseAppCheck
 import com.google.firebase.appcheck.debug.DebugAppCheckProviderFactory
 import com.google.firebase.FirebaseApp
@@ -158,5 +161,26 @@ class MainActivity : ComponentActivity() {
         } catch (e: Exception) {
             Log.e(TAG, "Failed to initialize Google Maps SDK", e)
         }
+    }
+
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (event.keyCode == KeyEvent.KEYCODE_VOLUME_UP || event.keyCode == KeyEvent.KEYCODE_VOLUME_DOWN) {
+            try {
+                val intent = Intent(this, EmergencyBackgroundService::class.java).apply {
+                    action = EmergencyBackgroundService.ACTION_VOLUME_EVENT
+                    putExtra(EmergencyBackgroundService.EXTRA_KEY_EVENT, event)
+                }
+                // Only send if service is likely running or we want to start it (which we might not want just for volume)
+                // But the requirement is "SOS activation", so we should send it.
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    startForegroundService(intent)
+                } else {
+                    startService(intent)
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error dispatching volume event", e)
+            }
+        }
+        return super.dispatchKeyEvent(event)
     }
 }

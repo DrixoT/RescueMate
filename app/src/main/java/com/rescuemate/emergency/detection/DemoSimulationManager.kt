@@ -15,6 +15,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.concurrent.atomic.AtomicBoolean
 
+import com.rescuemate.emergency.data.UserInfo
+
 /**
  * Demo Simulation Manager
  * Orchestrates the anomaly simulation demo.
@@ -46,10 +48,10 @@ class DemoSimulationManager(private val context: Context) {
     private var consecutiveHighRiskCount = 0
     private var lastReadings = mutableListOf<MockSensorDataService.HeartRateReading>()
 
-    fun startDemo() {
+    fun startDemo(userId: String, userInfo: UserInfo) {
         if (isRunning.get()) return
         isRunning.set(true)
-        Log.d(TAG, "Starting Demo Simulation...")
+        Log.d(TAG, "Starting Demo Simulation for user: $userId")
 
         simulationJob = CoroutineScope(Dispatchers.Default).launch {
             while (isActive && isRunning.get()) {
@@ -97,27 +99,10 @@ class DemoSimulationManager(private val context: Context) {
                         Log.e(TAG, "🚨 EMERGENCY THRESHOLD REACHED! Triggering protocol...")
                         
                         withContext(Dispatchers.Main) {
-                            // Create dummy MedicalInfo
-                            val dummyMedicalInfo = com.rescuemate.emergency.data.MedicalInfo(
-                                userId = "demo_user",
-                                knownConditions = emptyList(),
-                                currentMedications = emptyList(),
-                                allergies = emptyList()
-                            )
-
-                            // Create dummy UserInfo for demo purposes since we don't have direct access to user prefs here
-                            val dummyUserInfo = com.rescuemate.emergency.data.UserInfo(
-                                userId = "demo_user",
-                                name = "Demo User",
-                                age = 30,
-                                phoneNumber = "0000000000",
-                                medicalInfo = dummyMedicalInfo
-                            )
-                            
-                            // Use the public trigger method with dummy user info
+                            // Use the provided userId and userInfo
                             emergencyManager.triggerManualEmergency(
-                                userId = "demo_user",
-                                userInfo = dummyUserInfo,
+                                userId = userId,
+                                userInfo = userInfo,
                                 emergencyType = com.rescuemate.emergency.EmergencyConstants.EmergencyType.MANUAL_TRIGGER // Using manual trigger for immediate effect in demo
                             )
                         }

@@ -17,14 +17,8 @@ class FirestoreRepository {
 
     private val auth = FirebaseAuth.getInstance()
     private val db = FirebaseFirestore.getInstance()
-    // Explicitly initialize with the correct bucket URL to avoid "Object does not exist" 404 errors
-    // if google-services.json has a different default bucket
-    private val storage = try {
-        FirebaseStorage.getInstance("gs://rescuemate-c98a3.firebasestorage.app")
-    } catch (e: Exception) {
-        Log.w(TAG, "Could not get storage instance with specific bucket, falling back to default", e)
-        FirebaseStorage.getInstance()
-    }
+    // Initialize FirebaseStorage with the default instance (from google-services.json)
+    private val storage = FirebaseStorage.getInstance()
 
     companion object {
         private const val TAG = "FirestoreRepository"
@@ -177,7 +171,7 @@ class FirestoreRepository {
         val userId = auth.currentUser?.uid ?: return
         try {
             db.collection(COLLECTION_USERS).document(userId)
-                .collection(COLLECTION_CONTACTS).document(contact.id)
+            .collection(COLLECTION_CONTACTS).document(contact.id)
                 .set(contact)
                 .await()
             Log.d(TAG, "Contact saved to Firestore")

@@ -298,6 +298,15 @@ fun HomeDashboard(
                     }
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         IconButton(
+                            onClick = { onNavigate("logs") }
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Description,
+                                contentDescription = "Logs",
+                                tint = CosmicTextPrimary
+                            )
+                        }
+                        IconButton(
                             onClick = { onNavigate("profile?mode=popup") }
                         ) {
                             Icon(
@@ -375,20 +384,6 @@ fun HomeDashboard(
                 )
                 
                 Spacer(modifier = Modifier.height(8.dp))
-                
-                // Logs Icon - Right aligned below Start Monitoring
-                Box(modifier = Modifier.fillMaxWidth()) {
-                     IconButton(
-                         onClick = { onNavigate("logs") },
-                         modifier = Modifier.align(Alignment.CenterEnd)
-                     ) {
-                         Icon(
-                             imageVector = Icons.Default.List,
-                             contentDescription = "Logs",
-                             tint = CosmicTextSecondary
-                         )
-                     }
-                }
 
                 Spacer(modifier = Modifier.weight(1f))
 
@@ -534,7 +529,7 @@ fun HomeDashboard(
             // Overlays
             CosmicOverlay(
                 visible = showSOSConfirmation,
-                title = "PLANETARY DISTRESS",
+                title = "EMERGENCY PROTOCOL",
                 message = "Initiating emergency sequence in $remainingSeconds seconds.\n\nStand by for extraction protocol.",
                 confirmText = "INITIATE NOW",
                 dismissText = "ABORT",

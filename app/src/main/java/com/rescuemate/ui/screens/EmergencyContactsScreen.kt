@@ -2,6 +2,8 @@ package com.rescuemate.ui.screens
 
 import android.util.Log
 import android.widget.Toast
+import android.content.Intent
+import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -523,6 +525,7 @@ fun ContactCard(
     onDelete: () -> Unit = {},
     onUpdate: (EmergencyContact) -> Unit = {}
 ) {
+    val context = LocalContext.current
     var showDeleteDialog by remember { mutableStateOf(false) }
     var isPreferenceExpanded by remember { mutableStateOf(false) }
 
@@ -684,7 +687,15 @@ fun ContactCard(
                 Button(
                     onClick = {
                         Log.d("ContactCard", "📞 Call button clicked for: ${contact.phoneNumber}")
-                        /* Handle call */
+                        try {
+                            val intent = Intent(Intent.ACTION_DIAL).apply {
+                                data = Uri.parse("tel:${contact.phoneNumber}")
+                            }
+                            context.startActivity(intent)
+                        } catch (e: Exception) {
+                            Log.e("ContactCard", "Error starting call", e)
+                            Toast.makeText(context, "Unable to make call", Toast.LENGTH_SHORT).show()
+                        }
                     },
                     modifier = Modifier.weight(1f).height(36.dp),
                     colors = ButtonDefaults.buttonColors(
@@ -705,7 +716,15 @@ fun ContactCard(
                 OutlinedButton(
                     onClick = {
                         Log.d("ContactCard", "💬 Message button clicked for: ${contact.phoneNumber}")
-                        /* Handle message */
+                        try {
+                            val intent = Intent(Intent.ACTION_SENDTO).apply {
+                                data = Uri.parse("smsto:${contact.phoneNumber}")
+                            }
+                            context.startActivity(intent)
+                        } catch (e: Exception) {
+                            Log.e("ContactCard", "Error sending message", e)
+                            Toast.makeText(context, "Unable to send message", Toast.LENGTH_SHORT).show()
+                        }
                     },
                     modifier = Modifier.weight(1f).height(36.dp),
                     colors = ButtonDefaults.outlinedButtonColors(
