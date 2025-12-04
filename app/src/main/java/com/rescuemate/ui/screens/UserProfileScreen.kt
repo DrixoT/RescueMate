@@ -45,26 +45,36 @@ fun UserProfileScreen(
     var name by remember { mutableStateOf(userPrefs.getUserName() ?: "") }
     var photoUrl by remember { mutableStateOf(userPrefs.getProfilePhotoUrl()) }
     
+    // State for selected photo URI to trigger upload
+    var selectedPhotoUri by remember { mutableStateOf<android.net.Uri?>(null) }
+    
     val photoPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickVisualMedia()
     ) { uri ->
         if (uri != null) {
-            scope.launch {
-                try {
-                    android.widget.Toast.makeText(context, "Uploading photo...", android.widget.Toast.LENGTH_SHORT).show()
-                    val url = firestoreRepo.uploadProfilePhoto(uri)
-                    photoUrl = url
-                    userPrefs.saveProfilePhotoUrl(url)
-                    android.widget.Toast.makeText(context, "Photo updated successfully", android.widget.Toast.LENGTH_SHORT).show()
-                } catch (e: Exception) {
-                    android.util.Log.e("UserProfileScreen", "Error uploading photo", e)
-                    val errorMessage = when {
-                        e.message?.contains("Object does not exist") == true -> "Storage bucket configuration error. Please contact support."
-                        e.message?.contains("unauthorized") == true -> "Permission denied. Please log in again."
-                        else -> "Failed to upload photo: ${e.message}"
-                    }
-                    android.widget.Toast.makeText(context, errorMessage, android.widget.Toast.LENGTH_LONG).show()
+            selectedPhotoUri = uri  // Set state instead of launching coroutine directly
+        }
+    }
+    
+    // Handle photo upload using LaunchedEffect to avoid coroutine leaving composition
+    LaunchedEffect(selectedPhotoUri) {
+        selectedPhotoUri?.let { uri ->
+            try {
+                android.widget.Toast.makeText(context, "Uploading photo...", android.widget.Toast.LENGTH_SHORT).show()
+                val url = firestoreRepo.uploadProfilePhoto(uri)
+                photoUrl = url
+                userPrefs.saveProfilePhotoUrl(url)
+                android.widget.Toast.makeText(context, "Photo updated successfully", android.widget.Toast.LENGTH_SHORT).show()
+            } catch (e: Exception) {
+                android.util.Log.e("UserProfileScreen", "Error uploading photo", e)
+                val errorMessage = when {
+                    e.message?.contains("Object does not exist") == true -> "Storage bucket configuration error. Please contact support."
+                    e.message?.contains("unauthorized") == true -> "Permission denied. Please log in again."
+                    else -> "Failed to upload photo: ${e.message}"
                 }
+                android.widget.Toast.makeText(context, errorMessage, android.widget.Toast.LENGTH_LONG).show()
+            } finally {
+                selectedPhotoUri = null  // Reset after processing
             }
         }
     }

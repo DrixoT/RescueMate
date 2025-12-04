@@ -90,6 +90,10 @@ fun VoiceAISetupScreen(
     var customWakeWord by remember { mutableStateOf("Hey RescueMate") }
     var isLoading by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
+    
+    // State setters for callbacks to ensure proper recomposition
+    val setIsPlaying: (Boolean) -> Unit = { value -> isPlaying = value }
+    val setPlayingVoiceId: (String?) -> Unit = { value -> playingVoiceId = value }
 
     // Cleanup on dispose
     DisposableEffect(Unit) {
@@ -253,13 +257,13 @@ fun VoiceAISetupScreen(
                         if (playingVoiceId == voice.id && isPlaying) {
                             // Stop playing
                             voiceService.stopAudio()
-                            isPlaying = false
-                            playingVoiceId = null
+                            setIsPlaying(false)
+                            setPlayingVoiceId(null)
                         } else {
                             // Start playing preview
                             isLoading = true
                             errorMessage = null
-                            playingVoiceId = voice.id
+                            setPlayingVoiceId(voice.id)
 
                             android.util.Log.d("VoiceAISetup", "Starting voice preview for: ${voice.name}")
 
@@ -280,28 +284,36 @@ fun VoiceAISetupScreen(
                                         android.util.Log.d("VoiceAISetup", "Audio generated: $audioPath")
 
                                         if (audioPath != null) {
-                                            // Play the audio
-                                            val playResult = voiceService.playAudio(audioPath)
+                                            // Play the audio with completion callback
+                                            // Use state setters to ensure proper recomposition
+                                            val playResult = voiceService.playAudio(audioPath) {
+                                                // Callback when playback completes or errors
+                                                // Update state on Main thread using state setters
+                                                setIsPlaying(false)
+                                                setPlayingVoiceId(null)
+                                            }
 
                                             if (playResult.isSuccess) {
-                                                isPlaying = true
+                                                setIsPlaying(true)
                                                 android.util.Log.d("VoiceAISetup", "Playing audio successfully")
                                             } else {
-                                                errorMessage = "Failed to play audio: ${playResult.exceptionOrNull()?.message}"
+                                                val error = playResult.exceptionOrNull()?.message ?: "Unknown error"
+                                                errorMessage = "Failed to play audio: $error"
                                                 android.util.Log.e("VoiceAISetup", errorMessage!!)
-                                                playingVoiceId = null
+                                                setIsPlaying(false)
+                                                setPlayingVoiceId(null)
                                             }
                                         }
                                     } else {
                                         val error = audioResult.exceptionOrNull()?.message ?: "Unknown error"
                                         errorMessage = "Failed to generate audio: $error"
                                         android.util.Log.e("VoiceAISetup", errorMessage!!)
-                                        playingVoiceId = null
+                                        setPlayingVoiceId(null)
                                     }
                                 } catch (e: Exception) {
                                     errorMessage = "Error: ${e.message}"
                                     android.util.Log.e("VoiceAISetup", "Exception during voice preview", e)
-                                    playingVoiceId = null
+                                    setPlayingVoiceId(null)
                                 } finally {
                                     isLoading = false
                                 }

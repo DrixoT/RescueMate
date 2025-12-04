@@ -1,6 +1,10 @@
 package com.rescuemate.services
 
 import android.content.Context
+import android.media.AudioAttributes
+import android.media.AudioFocusRequest
+import android.media.AudioManager
+import android.os.Build
 import android.util.Log
 import com.rescuemate.ai.TinyLlamaInferenceService
 import com.rescuemate.emergency.data.InteractionLogManager
@@ -40,6 +44,11 @@ class LocalVoiceLLMService(private val context: Context) {
     private var streamingTTS: StreamingTTS? = null
     private val emergencyAssistant = EmergencyAssistantService()
     
+    // Audio focus management
+    private var audioManager: AudioManager? = null
+    private var audioFocusRequest: AudioFocusRequest? = null
+    private var hasAudioFocus: Boolean = false
+    
     // Logging
     private val interactionLogManager = InteractionLogManager(context)
     private val transcriptBuilder = StringBuffer()
@@ -72,6 +81,96 @@ class LocalVoiceLLMService(private val context: Context) {
 
     init {
         Log.d(TAG, "LocalVoiceLLMService instantiated")
+        audioManager = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
+        initializeAudioFocus()
+    }
+    
+    /**
+     * Initialize audio focus request for Android 8.0+
+     */
+    private fun initializeAudioFocus() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            audioFocusRequest = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)
+                .setAudioAttributes(
+                    AudioAttributes.Builder()
+                        .setUsage(AudioAttributes.USAGE_MEDIA)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                        .build()
+                )
+                .setAcceptsDelayedFocusGain(true)
+                .setOnAudioFocusChangeListener { focusChange ->
+                    handleAudioFocusChange(focusChange)
+                }
+                .build()
+            Log.d(TAG, "Audio focus request initialized for Android O+")
+        } else {
+            Log.d(TAG, "Using legacy audio focus for Android < O")
+        }
+    }
+    
+    /**
+     * Handle audio focus changes
+     */
+    private fun handleAudioFocusChange(focusChange: Int) {
+        when (focusChange) {
+            AudioManager.AUDIOFOCUS_GAIN -> {
+                Log.d(TAG, "Audio focus gained")
+                hasAudioFocus = true
+            }
+            AudioManager.AUDIOFOCUS_LOSS, AudioManager.AUDIOFOCUS_LOSS_TRANSIENT -> {
+                Log.w(TAG, "Audio focus lost - pausing conversation")
+                hasAudioFocus = false
+                streamingTTS?.stop()
+            }
+            AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK -> {
+                Log.d(TAG, "Audio focus ducked - continuing conversation")
+                hasAudioFocus = true
+            }
+        }
+    }
+    
+    /**
+     * Request audio focus for conversation
+     */
+    private fun requestAudioFocus(): Boolean {
+        return try {
+            val audioMgr = audioManager ?: return false
+            val result = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && audioFocusRequest != null) {
+                audioMgr.requestAudioFocus(audioFocusRequest!!)
+            } else {
+                @Suppress("DEPRECATION")
+                audioMgr.requestAudioFocus(
+                    null,
+                    AudioManager.STREAM_MUSIC,
+                    AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK
+                )
+            }
+            hasAudioFocus = result == AudioManager.AUDIOFOCUS_REQUEST_GRANTED
+            Log.d(TAG, "Audio focus request result: $hasAudioFocus (result=$result)")
+            hasAudioFocus
+        } catch (e: Exception) {
+            Log.e(TAG, "Error requesting audio focus", e)
+            false
+        }
+    }
+    
+    /**
+     * Release audio focus
+     */
+    private fun releaseAudioFocus() {
+        try {
+            val audioMgr = audioManager ?: return
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && audioFocusRequest != null) {
+                audioMgr.abandonAudioFocusRequest(audioFocusRequest!!)
+            } else {
+                @Suppress("DEPRECATION")
+                audioMgr.abandonAudioFocus(null)
+            }
+            hasAudioFocus = false
+            Log.d(TAG, "Audio focus released")
+        } catch (e: Exception) {
+            Log.e(TAG, "Error releasing audio focus", e)
+        }
     }
 
     /**
@@ -216,6 +315,11 @@ class LocalVoiceLLMService(private val context: Context) {
             callbacks.onConnect(conversationId!!)
             callbacks.onStatusChange("connected")
             
+            // Request audio focus before starting conversation
+            if (!requestAudioFocus()) {
+                Log.w(TAG, "Audio focus not granted initially, will retry when speaking")
+            }
+            
             // Initial greeting
             val greeting = emergencyAssistant.getGreeting()
             callbacks.onMessage("agent", greeting)
@@ -233,7 +337,14 @@ class LocalVoiceLLMService(private val context: Context) {
             // Stop listening before speaking to avoid echo
             stopListening()
 
+            // Ensure audio focus before speaking greeting
+            if (!hasAudioFocus) {
+                requestAudioFocus()
+                delay(200) // Brief delay for focus to be granted
+            }
+
             // Speak greeting
+            Log.d(TAG, "Speaking greeting: $greeting")
             streamingTTS?.speakToken(greeting)
             streamingTTS?.speakFinal()
             
@@ -329,13 +440,22 @@ class LocalVoiceLLMService(private val context: Context) {
                     callbacks?.onModeChange("speaking")
                 }
                 
+                // Ensure audio focus before speaking response
+                if (!hasAudioFocus) {
+                    Log.d(TAG, "Requesting audio focus before speaking response")
+                    requestAudioFocus()
+                    delay(200) // Brief delay for focus to be granted
+                }
+                
                 // Stream tokens from Shared LLM Service -> TTS
                 try {
+                    Log.d(TAG, "Starting LLM response generation for: '${text.take(50)}...'")
                      tinyLlamaService.generateResponseStream(text, systemPrompt) { token ->
                         hasReceivedTokens = true
                         responseBuilder.append(token)
                         streamingTTS?.speakToken(token)
                     }
+                    Log.d(TAG, "LLM response generation completed")
                 } catch (e: Exception) {
                     Log.e(TAG, "Exception during token generation", e)
                 }
@@ -345,10 +465,15 @@ class LocalVoiceLLMService(private val context: Context) {
                     Log.e(TAG, "LLM failed to generate response")
                     val errorMsg = "I'm having trouble thinking right now. Please call 911 if this is an emergency."
                     responseBuilder.append(errorMsg)
+                    // Ensure audio focus for error message
+                    if (!hasAudioFocus) {
+                        requestAudioFocus()
+                    }
                     streamingTTS?.speakToken(errorMsg)
                 }
                 
                 // Flush TTS buffer
+                Log.d(TAG, "Flushing TTS buffer - finalizing speech")
                 streamingTTS?.speakFinal()
                 
                 val fullResponse = responseBuilder.toString()
@@ -361,6 +486,10 @@ class LocalVoiceLLMService(private val context: Context) {
                     if (!fullResponse.lowercase().contains("911") && !fullResponse.lowercase().contains("emergency")) {
                         val safetyMsg = " Please call 911 immediately."
                         responseBuilder.append(safetyMsg)
+                        // Ensure audio focus for safety message
+                        if (!hasAudioFocus) {
+                            requestAudioFocus()
+                        }
                         streamingTTS?.speakToken(safetyMsg)
                         streamingTTS?.speakFinal()
                     }
@@ -398,6 +527,9 @@ class LocalVoiceLLMService(private val context: Context) {
         // Safe stop with try-catch inside streamingTTS
         streamingTTS?.stop()
         
+        // Release audio focus
+        releaseAudioFocus()
+        
         // 1. Save Log FIRST - before cleanup
         try {
         val transcript = transcriptBuilder.toString()
@@ -423,12 +555,17 @@ class LocalVoiceLLMService(private val context: Context) {
         voskSTT?.cleanup()
         streamingTTS?.shutdown()
         
+        // Release audio focus
+        releaseAudioFocus()
+        
         // IMPORTANT: Do NOT shutdown the shared TinyLlama service here blindly
         // But we should ensure any pending ops are cancelled.
         scope.cancel()
         
         // Reset init flag so we re-check everything next time
         isInitialized = false
+        audioManager = null
+        audioFocusRequest = null
     }
     
     // Interface compatibility methods

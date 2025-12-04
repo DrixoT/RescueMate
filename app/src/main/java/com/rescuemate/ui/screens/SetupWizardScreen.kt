@@ -75,7 +75,7 @@ fun SetupWizardScreen(
     var bloodType by remember { mutableStateOf("") }
     var isBloodTypeExpanded by remember { mutableStateOf(false) }
 
-    // Step 3: Emergency Contact State
+    // Step 3: Emergency Contact State - Start empty, only load from Firestore (user-specific)
     var contactName by remember { mutableStateOf("") }
     var contactPhone by remember { mutableStateOf("") }
     var contactRelation by remember { mutableStateOf("") }
@@ -134,12 +134,24 @@ fun SetupWizardScreen(
                         }
                     }
 
-                    // Load emergency contacts from Firestore
+                    // Load emergency contacts from Firestore (already filtered by current user's ID)
+                    // Only load if contacts exist and belong to current user
                     val contacts = firestoreRepo.getContacts()
-                    contacts.firstOrNull()?.let { contact ->
-                        contactName = contact.name
-                        contactPhone = contact.phoneNumber
-                        contactRelation = contact.relationship ?: ""
+                    if (contacts.isNotEmpty()) {
+                        contacts.firstOrNull()?.let { contact ->
+                            // Only populate if contact data is valid and belongs to current user
+                            // FirestoreRepository.getContacts() already filters by auth.currentUser?.uid
+                            contactName = contact.name
+                            contactPhone = contact.phoneNumber
+                            contactRelation = contact.relationship ?: ""
+                            Log.d("SetupWizardScreen", "Loaded contact from Firestore: ${contact.name}")
+                        }
+                    } else {
+                        // Ensure fields are empty if no contacts found
+                        contactName = ""
+                        contactPhone = ""
+                        contactRelation = ""
+                        Log.d("SetupWizardScreen", "No contacts found in Firestore - fields remain empty")
                     }
 
                     Log.d("SetupWizardScreen", "Successfully loaded data from Firestore")

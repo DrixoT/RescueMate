@@ -2,6 +2,9 @@ package com.rescuemate.services
 
 import android.Manifest
 import android.content.Context
+import android.media.AudioFocusRequest
+import android.media.AudioManager
+import android.os.Build
 import android.util.Log
 import androidx.core.content.ContextCompat
 import com.rescuemate.BuildConfig
@@ -15,6 +18,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.Job
@@ -71,6 +75,16 @@ class ElevenLabsConversationalService(private val context: Context) {
     
     // Network monitoring job for runtime network loss detection
     private var networkMonitoringJob: Job? = null
+    
+    // Session health monitoring
+    private var sessionHealthMonitoringJob: Job? = null
+    private var lastVadTimestamp: Long = 0
+    private var lastStatusChangeTimestamp: Long = 0
+    
+    // Audio focus management
+    private var audioManager: AudioManager? = null
+    private var audioFocusRequest: AudioFocusRequest? = null
+    private var hasAudioFocus: Boolean = false
 
     @Volatile
     private var isMutedState = false
@@ -81,6 +95,94 @@ class ElevenLabsConversationalService(private val context: Context) {
     init {
         Log.d(TAG, "ElevenLabsConversationalService initialized with official SDK")
         networkMonitor.startMonitoring()
+        audioManager = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
+        initializeAudioFocus()
+    }
+    
+    /**
+     * Initialize audio focus request for Android 8.0+
+     */
+    private fun initializeAudioFocus() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            audioFocusRequest = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)
+                .setAudioAttributes(
+                    android.media.AudioAttributes.Builder()
+                        .setUsage(android.media.AudioAttributes.USAGE_VOICE_COMMUNICATION)
+                        .setContentType(android.media.AudioAttributes.CONTENT_TYPE_SPEECH)
+                        .build()
+                )
+                .setAcceptsDelayedFocusGain(true)
+                .setOnAudioFocusChangeListener { focusChange ->
+                    handleAudioFocusChange(focusChange)
+                }
+                .build()
+        }
+    }
+    
+    /**
+     * Handle audio focus changes
+     */
+    private fun handleAudioFocusChange(focusChange: Int) {
+        when (focusChange) {
+            AudioManager.AUDIOFOCUS_GAIN -> {
+                Log.d(TAG, "Audio focus gained")
+                hasAudioFocus = true
+                // Session should automatically resume microphone capture
+            }
+            AudioManager.AUDIOFOCUS_LOSS, AudioManager.AUDIOFOCUS_LOSS_TRANSIENT -> {
+                Log.w(TAG, "Audio focus lost - microphone may stop capturing")
+                hasAudioFocus = false
+                // The SDK should handle this, but we log it for debugging
+            }
+            AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK -> {
+                Log.d(TAG, "Audio focus ducked - continuing capture")
+                hasAudioFocus = true
+            }
+        }
+    }
+    
+    /**
+     * Request audio focus for microphone capture
+     */
+    private fun requestAudioFocus(): Boolean {
+        return try {
+            val audioMgr = audioManager ?: return false
+            val result = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && audioFocusRequest != null) {
+                audioMgr.requestAudioFocus(audioFocusRequest!!)
+            } else {
+                @Suppress("DEPRECATION")
+                audioMgr.requestAudioFocus(
+                    null,
+                    AudioManager.STREAM_VOICE_CALL,
+                    AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK
+                )
+            }
+            hasAudioFocus = result == AudioManager.AUDIOFOCUS_REQUEST_GRANTED
+            Log.d(TAG, "Audio focus request result: $hasAudioFocus")
+            hasAudioFocus
+        } catch (e: Exception) {
+            Log.e(TAG, "Error requesting audio focus", e)
+            false
+        }
+    }
+    
+    /**
+     * Release audio focus
+     */
+    private fun releaseAudioFocus() {
+        try {
+            val audioMgr = audioManager ?: return
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && audioFocusRequest != null) {
+                audioMgr.abandonAudioFocusRequest(audioFocusRequest!!)
+            } else {
+                @Suppress("DEPRECATION")
+                audioMgr.abandonAudioFocus(null)
+            }
+            hasAudioFocus = false
+            Log.d(TAG, "Audio focus released")
+        } catch (e: Exception) {
+            Log.e(TAG, "Error releasing audio focus", e)
+        }
     }
 
     /**
@@ -109,6 +211,12 @@ class ElevenLabsConversationalService(private val context: Context) {
             Log.e(TAG, "❌ RECORD_AUDIO permission not granted!")
             callbacks.onError("Microphone permission required")
             return
+        }
+        
+        // Request audio focus for microphone capture
+        if (!requestAudioFocus()) {
+            Log.w(TAG, "⚠️ Audio focus not granted - microphone capture may be interrupted")
+            // Continue anyway - some devices may still work
         }
         
         if (conversationSession != null || usingLocalFallback) {
@@ -184,6 +292,7 @@ class ElevenLabsConversationalService(private val context: Context) {
                     },
                     onStatusChange = { status ->
                         Log.d(TAG, "📊 Status changed to: $status")
+                        lastStatusChangeTimestamp = System.currentTimeMillis()
                         callbacks.onStatusChange(status.name)
                     },
                     onCanSendFeedbackChange = { canSend ->
@@ -197,6 +306,7 @@ class ElevenLabsConversationalService(private val context: Context) {
                         // Voice Activity Detection - shows when user is speaking
                         if (score > 0.1f) {
                             Log.d(TAG, "🎤 Voice detected! VAD: $score")
+                            lastVadTimestamp = System.currentTimeMillis()
                         }
                         callbacks.onAudioLevelChange(score)
                     }
@@ -211,6 +321,13 @@ class ElevenLabsConversationalService(private val context: Context) {
                     Log.d(TAG, "Ready! Starting interactive voice conversation...")
                     Log.d(TAG, "Speak into your microphone to talk with the AI agent")
                     Log.d(TAG, "=" * 60)
+                    
+                    // Initialize timestamps for health monitoring
+                    lastVadTimestamp = System.currentTimeMillis()
+                    lastStatusChangeTimestamp = System.currentTimeMillis()
+                    
+                    // Start session health monitoring
+                    startSessionHealthMonitoring(callbacks)
                 } catch (e: Exception) {
                     Log.e(TAG, "Failed to start session", e)
                     
@@ -238,30 +355,101 @@ class ElevenLabsConversationalService(private val context: Context) {
     /**
      * Start monitoring network state during active conversation
      * Automatically switches to local LLM if network is lost
+     * Uses debouncing to prevent false positives
      */
     private fun startNetworkMonitoring(callbacks: ConversationCallbacks) {
         // Stop any existing monitoring
         networkMonitoringJob?.cancel()
         
+        var lastNetworkState = networkMonitor.checkConnection()
+        var networkLossStartTime: Long? = null
+        val NETWORK_LOSS_THRESHOLD_MS = 3000L // Require 3 seconds of network loss before switching
+        
         networkMonitoringJob = scope.launch {
             networkMonitor.isConnected.collectLatest { isConnected ->
+                val currentTime = System.currentTimeMillis()
+                
                 // Only act if we're using ElevenLabs (not already on local fallback)
-                if (!isConnected && conversationSession != null && !usingLocalFallback) {
-                    Log.w(TAG, "⚠️ Network lost during conversation - switching to local LLM")
-                    
-                    // End ElevenLabs session gracefully
-                    try {
-                        conversationSession?.endSession()
-                    } catch (e: Exception) {
-                        Log.e(TAG, "Error ending ElevenLabs session", e)
+                if (!usingLocalFallback && conversationSession != null) {
+                    if (!isConnected) {
+                        // Network lost - start tracking
+                        if (networkLossStartTime == null) {
+                            networkLossStartTime = currentTime
+                            Log.w(TAG, "⚠️ Network lost - monitoring for ${NETWORK_LOSS_THRESHOLD_MS}ms before switching")
+                        } else {
+                            // Check if we've been disconnected long enough
+                            val disconnectedDuration = currentTime - networkLossStartTime!!
+                            if (disconnectedDuration >= NETWORK_LOSS_THRESHOLD_MS) {
+                                Log.w(TAG, "⚠️ Network lost for ${disconnectedDuration}ms - switching to local LLM")
+                                
+                                // End ElevenLabs session gracefully
+                                try {
+                                    conversationSession?.endSession()
+                                } catch (e: Exception) {
+                                    Log.e(TAG, "Error ending ElevenLabs session", e)
+                                }
+                                conversationSession = null
+                                
+                                // Switch to local LLM
+                                startLocalConversation(callbacks)
+                                networkLossStartTime = null
+                            }
+                        }
+                    } else {
+                        // Network restored
+                        if (networkLossStartTime != null) {
+                            Log.d(TAG, "✓ Network restored before threshold - continuing with ElevenLabs")
+                            networkLossStartTime = null
+                        }
                     }
-                    conversationSession = null
+                }
+                
+                lastNetworkState = isConnected
+            }
+        }
+    }
+    
+    /**
+     * Start session health monitoring
+     * Detects if microphone stops capturing and attempts recovery
+     */
+    private fun startSessionHealthMonitoring(callbacks: ConversationCallbacks) {
+        // Stop any existing monitoring
+        sessionHealthMonitoringJob?.cancel()
+        
+        sessionHealthMonitoringJob = scope.launch {
+            while (conversationSession != null && !usingLocalFallback) {
+                delay(10000L) // Check every 10 seconds
+                
+                val currentTime = System.currentTimeMillis()
+                val timeSinceLastVad = currentTime - lastVadTimestamp
+                val timeSinceLastStatus = currentTime - lastStatusChangeTimestamp
+                
+                // If no VAD or status updates for 60 seconds, session might be dead
+                if (timeSinceLastVad > 60000L && timeSinceLastStatus > 60000L) {
+                    Log.w(TAG, "⚠️ Session appears inactive - no VAD or status updates for ${timeSinceLastVad}ms")
+                    Log.w(TAG, "This might indicate microphone capture has stopped")
                     
-                    // Switch to local LLM
-                    startLocalConversation(callbacks)
+                    // Try to detect if session is still alive by checking if we can get status
+                    // Note: ElevenLabs SDK doesn't expose session state directly
+                    // We rely on callbacks to indicate if session is dead
+                }
+                
+                // Check audio focus
+                if (!hasAudioFocus && !isMutedState) {
+                    Log.w(TAG, "⚠️ Audio focus lost - requesting again")
+                    requestAudioFocus()
                 }
             }
         }
+    }
+    
+    /**
+     * Stop session health monitoring
+     */
+    private fun stopSessionHealthMonitoring() {
+        sessionHealthMonitoringJob?.cancel()
+        sessionHealthMonitoringJob = null
     }
     
     /**
@@ -378,18 +566,33 @@ class ElevenLabsConversationalService(private val context: Context) {
             return localVoiceLLMService.toggleMute()
         }
 
+        if (conversationSession == null) {
+            Log.w(TAG, "Cannot toggle mute - no active conversation")
+            return isMutedState
+        }
+
         isMutedState = !isMutedState
-        // Note: ElevenLabs SDK 0.4.0 handles muting internally via audio input stream
-        // The SDK automatically stops processing audio input when muted
         
         try {
-            // The session manages audio input state automatically
+            // Note: ElevenLabs SDK manages audio internally
+            // The SDK doesn't expose direct mute methods, but we track state for UI
+            // The SDK will continue capturing audio, but we can use this flag
+            // to prevent processing or show muted state in UI
+            
             if (isMutedState) {
-                Log.d(TAG, "🔇 Microphone muted")
+                Log.d(TAG, "🔇 Microphone muted (state tracked - SDK continues capture)")
+                // Update callbacks to reflect muted state
+                callbacks?.onStatusChange("muted")
             } else {
                 Log.d(TAG, "🎤 Microphone unmuted")
+                // Ensure audio focus is still held
+                if (!hasAudioFocus) {
+                    requestAudioFocus()
+                }
+                callbacks?.onStatusChange("connected")
             }
         } catch (e: Exception) {
+            Log.e(TAG, "Error toggling mute", e)
             ErrorHandler.handle(
                 exception = e,
                 category = ErrorHandler.ErrorCategory.UNKNOWN,
@@ -448,8 +651,12 @@ class ElevenLabsConversationalService(private val context: Context) {
      * End the current conversation
      */
     fun endConversation() {
-        // Stop network monitoring
+        // Stop monitoring
         stopNetworkMonitoring()
+        stopSessionHealthMonitoring()
+        
+        // Release audio focus
+        releaseAudioFocus()
         
         if (usingLocalFallback) {
             localVoiceLLMService.endConversation()
@@ -538,6 +745,8 @@ class ElevenLabsConversationalService(private val context: Context) {
         endConversation()
         localVoiceLLMService.cleanup()
         stopNetworkMonitoring()
+        stopSessionHealthMonitoring()
+        releaseAudioFocus()
         scope.cancel()
         Log.d(TAG, "✓ Cleanup complete")
     }

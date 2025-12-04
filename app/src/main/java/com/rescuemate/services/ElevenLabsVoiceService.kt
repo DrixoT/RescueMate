@@ -58,6 +58,7 @@ class ElevenLabsVoiceService(private val context: Context) {
     private var mediaPlayer: MediaPlayer? = null
     private var currentVoiceId = DEFAULT_VOICE_ID
     private var apiKey: String = ""
+    private var onPlaybackComplete: (() -> Unit)? = null
 
     /**
      * Set the ElevenLabs API key
@@ -169,43 +170,79 @@ class ElevenLabsVoiceService(private val context: Context) {
     /**
      * Play generated audio file
      */
-    suspend fun playAudio(audioPath: String): Result<Unit> = withContext(Dispatchers.Main) {
+    suspend fun playAudio(audioPath: String, onComplete: (() -> Unit)? = null): Result<Unit> = withContext(Dispatchers.Main) {
         var tempPlayer: MediaPlayer? = null
         try {
+            // Stop any currently playing audio first
             stopAudio()
+            onPlaybackComplete = onComplete
+
+            // Verify file exists and is readable
+            val file = java.io.File(audioPath)
+            if (!file.exists()) {
+                android.util.Log.e("ElevenLabsVoiceService", "Audio file does not exist: $audioPath")
+                return@withContext Result.failure(Exception("Audio file not found: $audioPath"))
+            }
+            
+            if (file.length() == 0L) {
+                android.util.Log.e("ElevenLabsVoiceService", "Audio file is empty: $audioPath")
+                return@withContext Result.failure(Exception("Audio file is empty: $audioPath"))
+            }
+            
+            android.util.Log.d("ElevenLabsVoiceService", "Preparing to play audio: $audioPath (size: ${file.length()} bytes)")
 
             tempPlayer = MediaPlayer().apply {
                 try {
                     setDataSource(audioPath)
-                    prepare()
+                    prepare() // Synchronous prepare - we're already on Main thread
+                    
                     setOnCompletionListener {
                         // Reset when audio finishes playing
                         android.util.Log.d("ElevenLabsVoiceService", "Audio playback completed")
+                        val callback = onPlaybackComplete
                         stopAudio()
+                        // Invoke callback after cleanup to ensure state is consistent
+                        callback?.invoke()
                     }
+                    
                     setOnErrorListener { mp, what, extra ->
                         android.util.Log.e("ElevenLabsVoiceService", "MediaPlayer error: what=$what, extra=$extra")
+                        val callback = onPlaybackComplete
                         stopAudio()
+                        // Invoke callback after cleanup
+                        callback?.invoke()
                         true // Return true to indicate error was handled
                     }
+                    
                     start()
+                    android.util.Log.d("ElevenLabsVoiceService", "Audio playback started successfully")
                 } catch (e: Exception) {
+                    android.util.Log.e("ElevenLabsVoiceService", "Error setting up MediaPlayer", e)
                     // Clean up on failure
-                    release()
+                    try {
+                        release()
+                    } catch (releaseException: Exception) {
+                        android.util.Log.e("ElevenLabsVoiceService", "Error releasing MediaPlayer", releaseException)
+                    }
                     throw e
                 }
             }
 
-            // Only assign to class member after successful start
+            // Only assign to class member after successful initialization
             mediaPlayer = tempPlayer
             Result.success(Unit)
 
         } catch (e: Exception) {
-            android.util.Log.e("ElevenLabsVoiceService", "Failed to play audio", e)
+            android.util.Log.e("ElevenLabsVoiceService", "Failed to play audio: ${e.message}", e)
             // Ensure cleanup if not assigned to class member
             if (tempPlayer != null && tempPlayer != mediaPlayer) {
-                tempPlayer.release()
+                try {
+                    tempPlayer.release()
+                } catch (releaseException: Exception) {
+                    android.util.Log.e("ElevenLabsVoiceService", "Error releasing temp MediaPlayer", releaseException)
+                }
             }
+            onPlaybackComplete?.invoke()
             Result.failure(e)
         }
     }
@@ -215,12 +252,22 @@ class ElevenLabsVoiceService(private val context: Context) {
      */
     fun stopAudio() {
         mediaPlayer?.apply {
-            if (isPlaying) {
-                stop()
+            try {
+                if (isPlaying) {
+                    stop()
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("ElevenLabsVoiceService", "Error stopping MediaPlayer", e)
             }
-            release()
+            try {
+                release()
+            } catch (e: Exception) {
+                android.util.Log.e("ElevenLabsVoiceService", "Error releasing MediaPlayer", e)
+            }
         }
         mediaPlayer = null
+        // Don't clear onPlaybackComplete here - let callbacks handle it
+        // onPlaybackComplete = null
     }
 
     /**

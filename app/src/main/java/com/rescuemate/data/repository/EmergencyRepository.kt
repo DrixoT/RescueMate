@@ -10,6 +10,7 @@ import com.rescuemate.emergency.data.database.EmergencyDatabaseHelper
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 
 /**
  * Emergency Repository
@@ -82,14 +83,31 @@ class EmergencyRepository(private val context: Context) {
     }
 
     fun getAllContacts(): List<EmergencyContact> {
-        Log.d(TAG, " Retrieving all emergency contacts")
+        Log.d(TAG, "Retrieving all emergency contacts")
         return try {
+            // Prioritize Firestore contacts (user-specific) over local DB
+            // Firestore contacts are already filtered by current user's ID
+            val firestoreContacts = try {
+                kotlinx.coroutines.runBlocking {
+                    firestoreRepo.getContacts()
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to load contacts from Firestore: ${e.message}")
+                emptyList()
+            }
+            
+            if (firestoreContacts.isNotEmpty()) {
+                Log.d(TAG, "Retrieved ${firestoreContacts.size} contacts from Firestore")
+                return firestoreContacts
+            }
+            
+            // Fallback to local DB only if Firestore has no contacts
             val contactsResult = dbHelper.getAllContacts()
             val contacts = contactsResult.getOrNull() ?: emptyList()
-            Log.d(TAG, " Retrieved ${contacts.size} contacts")
+            Log.d(TAG, "Retrieved ${contacts.size} contacts from local DB (fallback)")
             contacts
         } catch (e: Exception) {
-            Log.e(TAG, " Exception retrieving contacts: ${e.message}", e)
+            Log.e(TAG, "Exception retrieving contacts: ${e.message}", e)
             emptyList()
         }
     }

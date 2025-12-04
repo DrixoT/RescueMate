@@ -63,8 +63,8 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.RescueMate"
+        android:networkSecurityConfig="@xml/network_security_config"
         tools:targetApi="31"
-        tools:ignore="ExtraText"
         android:enableOnBackInvokedCallback="true">
         
         <meta-data
@@ -98,5 +98,4 @@
         </service>
 
     </application>
-
 </manifest>

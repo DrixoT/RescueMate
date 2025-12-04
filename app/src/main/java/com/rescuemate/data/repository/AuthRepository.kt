@@ -19,6 +19,7 @@ import com.rescuemate.data.UserPreferences
 import com.rescuemate.data.repository.FCMRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 
@@ -315,6 +316,23 @@ class AuthRepository(private val context: Context) {
             userPrefs.setUserId(user.uid)
             Log.d("AuthRepository", "User ID set: ${user.uid}")
             
+            // Load profile photo from Firestore
+            CoroutineScope(Dispatchers.IO).launch {
+                try {
+                    val firestoreRepo = com.rescuemate.data.repository.FirestoreRepository()
+                    val userProfile = firestoreRepo.getUserProfile()
+                    userProfile?.get("photoUrl")?.let { photoUrl ->
+                        if (photoUrl is String && photoUrl.isNotBlank()) {
+                            userPrefs.saveProfilePhotoUrl(photoUrl)
+                            Log.d("AuthRepository", "Profile photo URL loaded: $photoUrl")
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.w("AuthRepository", "Failed to load profile photo from Firestore: ${e.message}")
+                    // Don't fail login if photo fetch fails
+                }
+            }
+            
             // Register FCM token after successful login with retry logic
             CoroutineScope(Dispatchers.IO).launch {
                 var retryCount = 0
@@ -327,13 +345,13 @@ class AuthRepository(private val context: Context) {
                         if (!success && retryCount < maxRetries - 1) {
                             retryCount++
                             Log.d("AuthRepository", "FCM token registration failed, retrying ($retryCount/$maxRetries)...")
-                            kotlinx.coroutines.delay(2000 * retryCount) // Exponential backoff: 2s, 4s, 6s
+                            delay(2000L * retryCount.toLong()) // Exponential backoff: 2s, 4s, 6s
                         }
                     } catch (e: Exception) {
                         retryCount++
                         Log.e("AuthRepository", "FCM token registration error (attempt $retryCount/$maxRetries)", e)
                         if (retryCount < maxRetries) {
-                            kotlinx.coroutines.delay(2000 * retryCount)
+                            delay(2000L * retryCount.toLong())
                         }
                     }
                 }
