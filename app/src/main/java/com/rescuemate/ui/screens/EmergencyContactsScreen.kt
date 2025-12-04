@@ -34,6 +34,7 @@ import com.rescuemate.data.repository.EmergencyRepository
 import com.rescuemate.emergency.data.EmergencyContact
 import com.rescuemate.ui.theme.*
 import com.rescuemate.utils.QRCodeUtils
+import com.rescuemate.utils.EncryptionUtils
 import org.json.JSONObject
 
 @Composable
@@ -59,7 +60,12 @@ fun EmergencyContactsScreen(
     ) { result ->
         if (result.contents != null) {
             try {
-                val json = JSONObject(result.contents)
+                val decryptedContent = EncryptionUtils.decrypt(result.contents)
+                if (decryptedContent == null) {
+                    Toast.makeText(context, "Invalid QR Code (Decryption failed)", Toast.LENGTH_SHORT).show()
+                    return@rememberLauncherForActivityResult
+                }
+                val json = JSONObject(decryptedContent)
                 val name = json.optString("name", "")
                 val phone = json.optString("phone", "")
                 if (name.isNotEmpty() && phone.isNotEmpty()) {
@@ -383,7 +389,8 @@ fun EmergencyContactsScreen(
                     
                     // QR Code Image
                     val bitmap = remember(qrContent) {
-                        QRCodeUtils.generateQRCode(qrContent)
+                        val encryptedContent = EncryptionUtils.encrypt(qrContent)
+                        QRCodeUtils.generateQRCode(encryptedContent)
                     }
                     
                     if (bitmap != null) {

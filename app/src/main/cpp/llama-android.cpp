@@ -90,6 +90,7 @@ JNIEXPORT void JNICALL Java_com_rescuemate_services_StreamingLLM_generateTokenSt
     llama_batch batch = llama_batch_init(2048, 0, 1); // Max batch size
 
     // Evaluate prompt (prefill)
+    LOGI("Evaluating prompt: %s", prompt_str);
     for (size_t i = 0; i < tokens.size(); i++) {
         common_batch_add(batch, tokens[i], i, { 0 }, false);
     }
@@ -108,6 +109,8 @@ JNIEXPORT void JNICALL Java_com_rescuemate_services_StreamingLLM_generateTokenSt
         common_sampler_free(smpl);
         return;
     }
+    
+    LOGI("Prompt evaluated. Starting generation...");
 
     // Generation loop
     int n_cur = batch.n_tokens;
@@ -120,6 +123,7 @@ JNIEXPORT void JNICALL Java_com_rescuemate_services_StreamingLLM_generateTokenSt
 
         // Check for EOS
         if (llama_vocab_is_eog(llama_model_get_vocab(model), new_token_id)) {
+            LOGI("EOS token detected");
             break;
         }
 
@@ -128,9 +132,12 @@ JNIEXPORT void JNICALL Java_com_rescuemate_services_StreamingLLM_generateTokenSt
         
         // common_token_to_piece might return string with c_str() that is valid
         if (!piece.empty()) {
+            LOGI("Generated token: %s", piece.c_str());
             jstring tokenStr = env->NewStringUTF(piece.c_str());
             env->CallObjectMethod(callback, onTokenMethod, tokenStr);
             env->DeleteLocalRef(tokenStr);
+        } else {
+             // LOGI("Generated empty token piece");
         }
 
         // Prepare next batch

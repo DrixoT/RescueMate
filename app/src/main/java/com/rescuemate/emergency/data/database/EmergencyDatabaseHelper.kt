@@ -575,6 +575,33 @@ class EmergencyDatabaseHelper(context: Context) : SQLiteOpenHelper(
         }
     }
 
+    fun updateInteractionLog(log: InteractionLog): Result<Int> {
+        return try {
+            val db = writableDatabase
+            val values = ContentValues().apply {
+                put(COL_LOG_SUMMARY, log.summary)
+                put(COL_LOG_TRANSCRIPT, log.transcript)
+                put(COL_LOG_TYPE, log.type)
+            }
+            val result = db.update(TABLE_LOGS, values, "$COL_LOG_ID = ?", arrayOf(log.id))
+            Result.success(result)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error updating interaction log: ${log.id}", e)
+            Result.failure(e)
+        }
+    }
+
+    fun deleteInteractionLog(logId: String): Result<Int> {
+        return try {
+            val db = writableDatabase
+            val result = db.delete(TABLE_LOGS, "$COL_LOG_ID = ?", arrayOf(logId))
+            Result.success(result)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error deleting interaction log: $logId", e)
+            Result.failure(e)
+        }
+    }
+    
     fun getInteractionLogs(userId: String, limit: Int = 50, offset: Int = 0): Result<List<InteractionLog>> {
         return try {
             val logs = mutableListOf<InteractionLog>()

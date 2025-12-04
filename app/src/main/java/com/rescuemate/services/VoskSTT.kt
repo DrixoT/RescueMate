@@ -146,6 +146,7 @@ class VoskSTT(
                                 val jsonObj = JSONObject(json)
                                 val partial = jsonObj.optString("partial", "")
                                 if (partial.isNotEmpty()) {
+                                    Log.v(TAG, "Partial: $partial") // Added verbose logging
                                     withContext(Dispatchers.Main) {
                                         onPartialResult?.invoke(partial)
                                     }

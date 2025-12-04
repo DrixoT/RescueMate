@@ -225,24 +225,20 @@ class FirestoreRepository {
 
     // ==================== Interaction Logs ====================
 
-    fun saveInteractionLog(log: InteractionLog) {
-        val userId = auth.currentUser?.uid ?: return
-        // Fire and forget mostly, or we can make it suspend if caller handles it
-        // The existing usage in InteractionLogManager calls it without suspend in a coroutine scope, but checking the signature there...
-        // It was `firestoreRepository?.saveInteractionLog(log)`
+    suspend fun saveInteractionLog(log: InteractionLog): Result<Unit> {
+        val userId = auth.currentUser?.uid ?: return Result.failure(Exception("User not logged in"))
         
-        try {
+        return try {
             db.collection(COLLECTION_USERS).document(userId)
                 .collection(COLLECTION_INTERACTION_LOGS).document(log.id)
                 .set(log)
-                .addOnSuccessListener { 
-                    Log.d(TAG, "Interaction log saved to Firestore: ${log.id}") 
-                }
-                .addOnFailureListener { e ->
-                    Log.e(TAG, "Error saving interaction log", e)
-                }
+                .await()
+            
+            Log.d(TAG, "Interaction log saved to Firestore: ${log.id}")
+            Result.success(Unit)
         } catch (e: Exception) {
-            Log.e(TAG, "Error initiating save interaction log", e)
+            Log.e(TAG, "Error saving interaction log", e)
+            Result.failure(e)
         }
     }
 

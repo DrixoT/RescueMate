@@ -3,10 +3,13 @@ package com.rescuemate.emergency
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
+import android.content.Intent
+import android.net.Uri
 import android.os.Build
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.rescuemate.R
+import com.rescuemate.data.UserPreferences
 import com.rescuemate.emergency.data.*
 import com.rescuemate.emergency.data.database.EmergencyDatabaseHelper
 import com.rescuemate.emergency.health.HealthMonitoringService
@@ -25,6 +28,7 @@ class EmergencyManager(private val context: Context) {
     private val healthMonitoring = HealthMonitoringService(context)
     private val locationService = EmergencyLocationService(context)
     private val twilioService = TwilioEmergencyService(context)
+    private val userPreferences = UserPreferences(context)
     private val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
     private val networkMonitor = NetworkMonitor(context)
 
@@ -311,6 +315,13 @@ class EmergencyManager(private val context: Context) {
      */
     private suspend fun notifyEmergencyContacts(event: EmergencyEvent) = withContext(Dispatchers.IO) {
         Log.d("EmergencyManager", "📞 Notifying ${event.emergencyContacts.size} emergency contacts")
+
+        // Check for Simulation Mode
+        if (userPreferences.getSimulationMode()) {
+            Log.i("EmergencyManager", "🎭 SIMULATION MODE ACTIVE: Skipping backend, using direct device calls/SMS")
+            notifySimulationContacts(event)
+            return@withContext
+        }
         
         // Check network connectivity
         if (!networkMonitor.checkConnection()) {
@@ -400,6 +411,49 @@ class EmergencyManager(private val context: Context) {
         }
         
         Log.d("EmergencyManager", "📊 Contact notification summary: $successfulCalls successful, $failedCalls failed")
+    }
+
+    /**
+     * Handle simulation mode contacts (Direct SMS and Call)
+     */
+    private suspend fun notifySimulationContacts(event: EmergencyEvent) = withContext(Dispatchers.IO) {
+        val smsManager = android.telephony.SmsManager.getDefault()
+        val message = buildFallbackSMSMessage(event) // Reuse fallback message for sim
+        
+        // 1. Send SMS to all contacts
+        event.emergencyContacts.forEach { contact ->
+            try {
+                Log.d("EmergencyManager", "🎭 Sim: Sending SMS to ${contact.name}")
+                smsManager.sendTextMessage(
+                    contact.phoneNumber,
+                    null,
+                    message,
+                    null,
+                    null
+                )
+            } catch (e: Exception) {
+                Log.e("EmergencyManager", "🎭 Sim: Failed to send SMS to ${contact.name}", e)
+            }
+        }
+
+        // 2. Call Primary Contact directly
+        val primaryContact = event.emergencyContacts.find { it.isPrimaryContact } 
+            ?: event.emergencyContacts.firstOrNull()
+            
+        if (primaryContact != null) {
+            try {
+                Log.d("EmergencyManager", "🎭 Sim: Calling ${primaryContact.name} directly")
+                withContext(Dispatchers.Main) {
+                    val intent = Intent(Intent.ACTION_CALL).apply {
+                        data = Uri.parse("tel:${primaryContact.phoneNumber}")
+                        flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                    }
+                    context.startActivity(intent)
+                }
+            } catch (e: Exception) {
+                Log.e("EmergencyManager", "🎭 Sim: Failed to initiate direct call", e)
+            }
+        }
     }
 
     /**

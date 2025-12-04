@@ -47,6 +47,7 @@ import com.rescuemate.emergency.health.HealthMonitoringService
 import com.rescuemate.services.ElevenLabsConversationalService
 import com.rescuemate.ui.components.*
 import com.rescuemate.ui.theme.*
+import com.rescuemate.utils.NetworkMonitor
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -89,6 +90,18 @@ fun HomeDashboard(
         } catch (e: Exception) {
             Log.w("HomeDashboard", "Failed to initialize ElevenLabsConversationalService", e)
             null
+        }
+    }
+    
+    // Network Monitoring
+    val networkMonitor = remember { NetworkMonitor(context) }
+    val isConnected by networkMonitor.isConnected.collectAsState()
+    
+    // Start/Stop monitoring
+    DisposableEffect(networkMonitor) {
+        networkMonitor.startMonitoring()
+        onDispose {
+            networkMonitor.stopMonitoring()
         }
     }
     
@@ -274,255 +287,262 @@ fun HomeDashboard(
                 }
         ) {
             Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(24.dp)
+                modifier = Modifier.fillMaxSize()
             ) {
-                // Header
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.Top
+                // Network Status Indicator
+                NetworkStatusBar(isConnected = isConnected)
+                
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(24.dp)
                 ) {
-                    Column {
-                        Text(
-                            text = stringResource(R.string.rescuemate).uppercase(),
-                            style = AsciiLarge,
-                            color = CosmicTextPrimary
-                        )
-                        Text(
-                            text = if (isMonitoringActive) "PROTECTION ACTIVE" else "MONITORING INACTIVE",
-                            style = AsciiSmall,
-                            color = if (isMonitoringActive) Color(0xFF4CAF50) else CosmicTextSecondary
-                        )
+                    // Header
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.Top
+                    ) {
+                        Column {
+                            Text(
+                                text = stringResource(R.string.rescuemate).uppercase(),
+                                style = AsciiLarge,
+                                color = CosmicTextPrimary
+                            )
+                            Text(
+                                text = if (isMonitoringActive) "PROTECTION ACTIVE" else "MONITORING INACTIVE",
+                                style = AsciiSmall,
+                                color = if (isMonitoringActive) Color(0xFF4CAF50) else CosmicTextSecondary
+                            )
+                        }
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            IconButton(
+                                onClick = { onNavigate("logs") }
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Description,
+                                    contentDescription = "Logs",
+                                    tint = CosmicTextPrimary
+                                )
+                            }
+                            IconButton(
+                                onClick = { onNavigate("profile?mode=popup") }
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Person,
+                                    contentDescription = stringResource(R.string.profile),
+                                    tint = CosmicTextPrimary
+                                )
+                            }
+                            IconButton(
+                                onClick = { onNavigate("settings?mode=popup") }
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Settings,
+                                    contentDescription = stringResource(R.string.settings),
+                                    tint = CosmicTextPrimary
+                                )
+                            }
+                        }
                     }
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        IconButton(
-                            onClick = { onNavigate("logs") }
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Description,
-                                contentDescription = "Logs",
-                                tint = CosmicTextPrimary
-                            )
-                        }
-                        IconButton(
-                            onClick = { onNavigate("profile?mode=popup") }
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Person,
-                                contentDescription = stringResource(R.string.profile),
-                                tint = CosmicTextPrimary
-                            )
-                        }
-                        IconButton(
-                            onClick = { onNavigate("settings?mode=popup") }
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Settings,
-                                contentDescription = stringResource(R.string.settings),
-                                tint = CosmicTextPrimary
-                            )
-                        }
-                    }
-                }
 
-                Spacer(modifier = Modifier.height(24.dp))
-                
-                Text(
-                    text = AsciiArt.GALAXY_DIVIDER,
-                    style = AsciiSmall,
-                    color = CosmicTextSecondary,
-                    modifier = Modifier.fillMaxWidth(),
-                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                )
-                
-                Spacer(modifier = Modifier.height(24.dp))
-                
-                // Emergency Status Card
-                if (currentEmergency != null) {
-                    EmergencyStatusCard(
-                        emergency = currentEmergency!!,
-                        onConfirmSafe = {
-                            emergencyManager?.userConfirmSafe()
-                            currentEmergency = null
+                    Spacer(modifier = Modifier.height(24.dp))
+                    
+                    Text(
+                        text = AsciiArt.GALAXY_DIVIDER,
+                        style = AsciiSmall,
+                        color = CosmicTextSecondary,
+                        modifier = Modifier.fillMaxWidth(),
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                    )
+                    
+                    Spacer(modifier = Modifier.height(24.dp))
+                    
+                    // Emergency Status Card
+                    if (currentEmergency != null) {
+                        EmergencyStatusCard(
+                            emergency = currentEmergency!!,
+                            onConfirmSafe = {
+                                emergencyManager?.userConfirmSafe()
+                                currentEmergency = null
+                            }
+                        )
+                        Spacer(modifier = Modifier.height(16.dp))
+                    }
+                    
+                    // Monitoring Status Card
+                    MonitoringStatusCard(
+                        isActive = isMonitoringActive,
+                        currentHeartRate = currentHeartRate,
+                        lastHealthCheck = lastHealthCheck,
+                        onStartMonitoring = {
+                            try {
+                                if (checkMonitoringPermissions(context)) {
+                                    startMonitoringService(context)
+                                    isMonitoringActive = true
+                                    toastMessage = "Monitoring Started"
+                                } else {
+                                    Log.w("HomeDashboard", "Missing required permissions")
+                                    toastMessage = "Missing Permissions"
+                                }
+                            } catch (e: Exception) {
+                                Log.e("HomeDashboard", "Failed to start monitoring", e)
+                                isMonitoringActive = false
+                                toastMessage = "Failed to Start"
+                            }
+                        },
+                        onStopMonitoring = {
+                            try {
+                                stopMonitoringService(context)
+                                isMonitoringActive = false
+                                toastMessage = "Monitoring Stopped"
+                            } catch (e: Exception) {
+                                Log.e("HomeDashboard", "Failed to stop monitoring", e)
+                            }
                         }
                     )
-                    Spacer(modifier = Modifier.height(16.dp))
-                }
-                
-                // Monitoring Status Card
-                MonitoringStatusCard(
-                    isActive = isMonitoringActive,
-                    currentHeartRate = currentHeartRate,
-                    lastHealthCheck = lastHealthCheck,
-                    onStartMonitoring = {
-                        try {
-                            if (checkMonitoringPermissions(context)) {
-                                startMonitoringService(context)
-                                isMonitoringActive = true
-                                toastMessage = "Monitoring Started"
-                            } else {
-                                Log.w("HomeDashboard", "Missing required permissions")
-                                toastMessage = "Missing Permissions"
-                            }
-                        } catch (e: Exception) {
-                            Log.e("HomeDashboard", "Failed to start monitoring", e)
-                            isMonitoringActive = false
-                            toastMessage = "Failed to Start"
-                        }
-                    },
-                    onStopMonitoring = {
-                        try {
-                            stopMonitoringService(context)
-                            isMonitoringActive = false
-                            toastMessage = "Monitoring Stopped"
-                        } catch (e: Exception) {
-                            Log.e("HomeDashboard", "Failed to stop monitoring", e)
-                        }
-                    }
-                )
-                
-                Spacer(modifier = Modifier.height(8.dp))
+                    
+                    Spacer(modifier = Modifier.height(8.dp))
 
-                Spacer(modifier = Modifier.weight(1f))
+                    Spacer(modifier = Modifier.weight(1f))
 
-                // Planetary SOS Button
-                Box(
-                    modifier = Modifier.fillMaxWidth(),
-                    contentAlignment = Alignment.Center
-                ) {
-                    PlanetarySOSButton(
-                        onClick = { /* Handled by hold/tap */ },
-                        onTap = {
-                            val isConnecting = conversationStatus == "connecting"
-                            val isActive = isVoiceConversationActive || conversationalService?.isActive() == true || isConnecting
+                    // Planetary SOS Button
+                    Box(
+                        modifier = Modifier.fillMaxWidth(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        PlanetarySOSButton(
+                            onClick = { /* Handled by hold/tap */ },
+                            onTap = {
+                                val isConnecting = conversationStatus == "connecting"
+                                val isActive = isVoiceConversationActive || conversationalService?.isActive() == true || isConnecting
 
-                            if (isActive) {
-                                conversationalService?.endConversation()
-                                isVoiceConversationActive = false
-                                conversationStatus = ""
-                                aiConversationMode = "idle"
-                                val conversationPrefs = context.getSharedPreferences("ai_conversation_state", Context.MODE_PRIVATE)
-                                conversationPrefs.edit().putBoolean("is_active", false).apply()
-                                toastMessage = "Voice Session Ended"
-                            } else {
-                                if (conversationalService == null) {
-                                    errorMessage = "Voice service unavailable. Please restart app."
+                                if (isActive) {
+                                    conversationalService?.endConversation()
+                                    isVoiceConversationActive = false
+                                    conversationStatus = ""
+                                    aiConversationMode = "idle"
+                                    val conversationPrefs = context.getSharedPreferences("ai_conversation_state", Context.MODE_PRIVATE)
+                                    conversationPrefs.edit().putBoolean("is_active", false).apply()
+                                    toastMessage = "Voice Session Ended"
+                                } else {
+                                    if (conversationalService == null) {
+                                        errorMessage = "Voice service unavailable. Please restart app."
+                                        showErrorDialog = true
+                                        return@PlanetarySOSButton
+                                    }
+                                    
+                                    val prefs = context.getSharedPreferences("voice_ai_prefs", Context.MODE_PRIVATE)
+                                    val agentId = prefs.getString("agent_id", com.rescuemate.BuildConfig.ELEVEN_AGENT_ID) 
+                                        ?: com.rescuemate.BuildConfig.ELEVEN_AGENT_ID
+                                    
+                                    if (agentId.isBlank() || agentId == "YOUR_AGENT_ID_HERE") {
+                                        errorMessage = "Voice AI not configured. Check Settings."
+                                        showErrorDialog = true
+                                    } else {
+                                        val hasPermission = ContextCompat.checkSelfPermission(
+                                            context,
+                                            Manifest.permission.RECORD_AUDIO
+                                        ) == PackageManager.PERMISSION_GRANTED
+                                        
+                                        if (!hasPermission) {
+                                            recordAudioLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                                        } else {
+                                            conversationStatus = "connecting" // Set status immediately to prevent double-tap
+                                            scope.launch {
+                                                startVoiceConversation(
+                                                    context = context,
+                                                    conversationalService = conversationalService,
+                                                    onSuccess = { 
+                                                        isVoiceConversationActive = true 
+                                                        toastMessage = "Voice Connected"
+                                                    },
+                                                    onModeChange = { aiConversationMode = it },
+                                                    onStatusChange = { conversationStatus = it },
+                                                    onMessage = { _, _ -> },
+                                                    onError = { 
+                                                        errorMessage = it
+                                                        showErrorDialog = true
+                                                    },
+                                                    onDisconnect = { 
+                                                        isVoiceConversationActive = false 
+                                                        toastMessage = "Voice Disconnected"
+                                                    },
+                                                    onCanSendFeedback = {},
+                                                    onAudioLevelChange = { aiAudioLevel = it }
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            },
+                            isInAIConversation = isVoiceConversationActive,
+                            aiConversationMode = aiConversationMode,
+                            audioLevel = aiAudioLevel,
+                            onShowConfirmation = {
+                                if (emergencyManager == null) {
+                                    errorMessage = "Cannot initiate SOS: Emergency Manager failed to initialize."
                                     showErrorDialog = true
                                     return@PlanetarySOSButton
                                 }
                                 
-                                val prefs = context.getSharedPreferences("voice_ai_prefs", Context.MODE_PRIVATE)
-                                val agentId = prefs.getString("agent_id", com.rescuemate.BuildConfig.ELEVEN_AGENT_ID) 
-                                    ?: com.rescuemate.BuildConfig.ELEVEN_AGENT_ID
-                                
-                                if (agentId.isBlank() || agentId == "YOUR_AGENT_ID_HERE") {
-                                    errorMessage = "Voice AI not configured. Check Settings."
-                                    showErrorDialog = true
-                                } else {
-                                    val hasPermission = ContextCompat.checkSelfPermission(
-                                        context,
-                                        Manifest.permission.RECORD_AUDIO
-                                    ) == PackageManager.PERMISSION_GRANTED
-                                    
-                                    if (!hasPermission) {
-                                        recordAudioLauncher.launch(Manifest.permission.RECORD_AUDIO)
-                                    } else {
-                                        conversationStatus = "connecting" // Set status immediately to prevent double-tap
-                                        scope.launch {
-                                            startVoiceConversation(
-                                                context = context,
-                                                conversationalService = conversationalService,
-                                                onSuccess = { 
-                                                    isVoiceConversationActive = true 
-                                                    toastMessage = "Voice Connected"
-                                                },
-                                                onModeChange = { aiConversationMode = it },
-                                                onStatusChange = { conversationStatus = it },
-                                                onMessage = { _, _ -> },
-                                                onError = { 
-                                                    errorMessage = it
-                                                    showErrorDialog = true
-                                                },
-                                                onDisconnect = { 
-                                                    isVoiceConversationActive = false 
-                                                    toastMessage = "Voice Disconnected"
-                                                },
-                                                onCanSendFeedback = {},
-                                                onAudioLevelChange = { aiAudioLevel = it }
-                                            )
+                                showSOSConfirmation = true
+                                remainingSeconds = 10
+                                autoConfirmJob?.cancel()
+                                autoConfirmJob = scope.launch {
+                                    while (remainingSeconds > 0 && showSOSConfirmation) {
+                                        delay(1000)
+                                        remainingSeconds--
+                                    }
+                                    if (showSOSConfirmation && remainingSeconds == 0) {
+                                        val prefs = context.getSharedPreferences(EmergencyConstants.PREF_NAME_EMERGENCY, Context.MODE_PRIVATE)
+                                        val userId = prefs.getString("user_id", "user_${System.currentTimeMillis()}") ?: "user_${System.currentTimeMillis()}"
+                                        val userName = prefs.getString("user_name", "User") ?: "User"
+                                        val userAge = prefs.getInt("user_age", 0)
+                                        val userPhone = prefs.getString("user_phone", "") ?: ""
+                                        
+                                        kotlinx.coroutines.CoroutineScope(Dispatchers.IO).launch {
+                                            try {
+                                                val userInfo = com.rescuemate.emergency.data.UserInfo(
+                                                    userId = userId,
+                                                    name = userName,
+                                                    age = userAge,
+                                                    phoneNumber = userPhone,
+                                                    medicalInfo = emergencyManager.database.getMedicalInfo(userId).getOrNull() 
+                                                        ?: com.rescuemate.emergency.data.MedicalInfo(userId = userId)
+                                                )
+                                                emergencyManager.triggerManualEmergency(userId, userInfo)
+                                            } catch (e: Exception) {
+                                                Log.e("SOS", "Error triggering emergency", e)
+                                            }
                                         }
+                                        showSOSConfirmation = false
                                     }
                                 }
                             }
-                        },
-                        isInAIConversation = isVoiceConversationActive,
-                        aiConversationMode = aiConversationMode,
-                        audioLevel = aiAudioLevel,
-                        onShowConfirmation = {
-                            if (emergencyManager == null) {
-                                errorMessage = "Cannot initiate SOS: Emergency Manager failed to initialize."
-                                showErrorDialog = true
-                                return@PlanetarySOSButton
-                            }
-                            
-                            showSOSConfirmation = true
-                            remainingSeconds = 10
-                            autoConfirmJob?.cancel()
-                            autoConfirmJob = scope.launch {
-                                while (remainingSeconds > 0 && showSOSConfirmation) {
-                                    delay(1000)
-                                    remainingSeconds--
-                                }
-                                if (showSOSConfirmation && remainingSeconds == 0) {
-                                    val prefs = context.getSharedPreferences(EmergencyConstants.PREF_NAME_EMERGENCY, Context.MODE_PRIVATE)
-                                    val userId = prefs.getString("user_id", "user_${System.currentTimeMillis()}") ?: "user_${System.currentTimeMillis()}"
-                                    val userName = prefs.getString("user_name", "User") ?: "User"
-                                    val userAge = prefs.getInt("user_age", 0)
-                                    val userPhone = prefs.getString("user_phone", "") ?: ""
-                                    
-                                    kotlinx.coroutines.CoroutineScope(Dispatchers.IO).launch {
-                                        try {
-                                            val userInfo = com.rescuemate.emergency.data.UserInfo(
-                                                userId = userId,
-                                                name = userName,
-                                                age = userAge,
-                                                phoneNumber = userPhone,
-                                                medicalInfo = emergencyManager.database.getMedicalInfo(userId).getOrNull() 
-                                                    ?: com.rescuemate.emergency.data.MedicalInfo(userId = userId)
-                                            )
-                                            emergencyManager.triggerManualEmergency(userId, userInfo)
-                                        } catch (e: Exception) {
-                                            Log.e("SOS", "Error triggering emergency", e)
-                                        }
-                                    }
-                                    showSOSConfirmation = false
-                                }
-                            }
-                        }
-                    )
-                }
+                        )
+                    }
 
-                Spacer(modifier = Modifier.weight(1f))
+                    Spacer(modifier = Modifier.weight(1f))
 
-                // Quick Action Buttons
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(16.dp)
-                ) {
-                    QuickActionButton(
-                        icon = Icons.Default.People,
-                        text = stringResource(R.string.contacts),
-                        modifier = Modifier.weight(1f),
-                        onClick = { onNavigate("contacts") }
-                    )
-                    QuickActionButton(
-                        icon = Icons.Default.LocationOn,
-                        text = stringResource(R.string.live_location),
-                        modifier = Modifier.weight(1f),
-                        onClick = { onNavigate("location") }
-                    )
+                    // Quick Action Buttons
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
+                        QuickActionButton(
+                            icon = Icons.Default.People,
+                            text = stringResource(R.string.contacts),
+                            modifier = Modifier.weight(1f),
+                            onClick = { onNavigate("contacts") }
+                        )
+                        QuickActionButton(
+                            icon = Icons.Default.LocationOn,
+                            text = stringResource(R.string.live_location),
+                            modifier = Modifier.weight(1f),
+                            onClick = { onNavigate("location") }
+                        )
+                    }
                 }
             }
             

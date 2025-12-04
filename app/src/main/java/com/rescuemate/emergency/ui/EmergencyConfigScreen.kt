@@ -36,11 +36,13 @@ fun EmergencyConfigurationScreen(
 ) {
     val context = LocalContext.current
     val twilioService = remember { TwilioEmergencyService(context) }
+    val userPrefs = remember { com.rescuemate.data.UserPreferences(context) }
     var backendUrl by remember { mutableStateOf("http://10.0.2.2:3000") }
     var monitoringEnabled by remember { mutableStateOf(false) }
     var shakeEnabled by remember { mutableStateOf(true) }
     var volumeEnabled by remember { mutableStateOf(true) }
     var healthEnabled by remember { mutableStateOf(false) }
+    var simulationMode by remember { mutableStateOf(userPrefs.getSimulationMode()) }
     var llmApiKey by remember { mutableStateOf("") }
 
     // Permission handling
@@ -135,6 +137,31 @@ fun EmergencyConfigurationScreen(
                     )
 
                     Spacer(modifier = Modifier.height(8.dp))
+
+                    // Simulation Mode Toggle
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Switch(
+                            checked = simulationMode,
+                            onCheckedChange = { 
+                                simulationMode = it
+                                userPrefs.setSimulationMode(it)
+                            }
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Column {
+                            Text("Emulator Simulation Mode")
+                            Text(
+                                "Use direct SMS/Calls for emulator testing",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                            )
+                        }
+                    }
+                    
+                    Spacer(modifier = Modifier.height(16.dp))
 
                     OutlinedTextField(
                         value = backendUrl,
@@ -326,6 +353,7 @@ fun EmergencyConfigurationScreen(
                     Spacer(modifier = Modifier.height(8.dp))
 
                     StatusRow("Permissions", permissionState.allPermissionsGranted)
+                    StatusRow("Simulation Mode", simulationMode)
                     StatusRow("Backend URL", backendUrl.isNotBlank())
                     StatusRow("Monitoring", monitoringEnabled)
                     StatusRow("Shake Detection", shakeEnabled)

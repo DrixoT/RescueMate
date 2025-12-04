@@ -173,5 +173,15 @@ class UserPreferences(context: Context) {
         prefs.edit().clear().apply()
         Log.d(TAG, " All data cleared")
     }
+
+    // Simulation Mode
+    fun setSimulationMode(enabled: Boolean) {
+        Log.d(TAG, "Setting simulation mode: $enabled")
+        prefs.edit().putBoolean("simulation_mode", enabled).apply()
+    }
+
+    fun getSimulationMode(): Boolean {
+        return prefs.getBoolean("simulation_mode", false)
+    }
 }
 

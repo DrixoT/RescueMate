@@ -32,60 +32,141 @@ class InteractionLogManager(private val context: Context) {
         }
 
         CoroutineScope(Dispatchers.IO).launch {
-            var summary = "Voice Interaction"
+            val isOnline = networkMonitor.checkConnection()
+            var summary = "Processing Summary..." // Temporary title
+            val logId = UUID.randomUUID().toString()
+            
+            // 1. Create initial log object
+            val log = InteractionLog(
+                id = logId,
+                userId = userId,
+                timestamp = System.currentTimeMillis(),
+                summary = summary,
+                transcript = transcript,
+                type = type
+            )
+            
+            // 2. Save locally immediately
             try {
-                val isOnline = networkMonitor.checkConnection()
-                val generatedSummary: String?
-
-                if (isOnline) {
-                    Log.d(TAG, "Network available, using OpenAI for summary...")
-                    generatedSummary = openAIService.generateSummary(transcript)
-                } else {
-                    Log.d(TAG, "Network unavailable, using offline TinyLlama...")
-                    tinyLlamaService.initialize()
-                    
-                    // Truncate transcript to prevent crash (limit to ~2000 chars)
-                    val safeTranscript = if (transcript.length > 2000) {
-                         transcript.take(2000) + "...[truncated]"
-                    } else {
-                         transcript
-                    }
-
-                    val systemPrompt = "You are a medical assistant. Analyze the following conversation and provide a response in exactly this format:\n" +
-                            "Title: [Symptom Name Only] (e.g. 'Semi-Handicap', 'Chest Pain'). Max 3-4 words. NO extra text.\n" +
-                            "Summary: [Detailed clinical summary of symptoms, actions, and advice. Do not miss any medical details.]\n" +
-                            "Do not include transcripts or other text."
-                    generatedSummary = tinyLlamaService.generateSimpleResponse(safeTranscript, systemPrompt)
-                }
-                
-                if (!generatedSummary.isNullOrBlank()) {
-                    summary = generatedSummary.trim().removePrefix("\"").removeSuffix("\"")
-                    Log.d(TAG, "Generated summary: $summary")
-                }
-            } catch (e: Exception) {
-                Log.w(TAG, "Summary generation failed, using default title", e)
-            }
-
-            try {
-                val log = InteractionLog(
-                    id = UUID.randomUUID().toString(),
-                    userId = userId,
-                    timestamp = System.currentTimeMillis(),
-                    summary = summary,
-                    transcript = transcript,
-                    type = type
-                )
-
-                // Save locally
                 dbHelper.insertInteractionLog(log)
                 Log.d(TAG, "Log saved locally: ${log.id}")
-
-                // Sync to Firestore
-                firestoreRepository?.saveInteractionLog(log)
-                Log.d(TAG, "Log synced to Firestore: ${log.id}")
-
             } catch (e: Exception) {
-                Log.e(TAG, "Error saving interaction log", e)
+                Log.e(TAG, "Error saving initial log locally", e)
+                return@launch
+            }
+
+            if (isOnline) {
+                Log.d(TAG, "Online: Generating summary with OpenAI...")
+                try {
+                    val generatedSummary = openAIService.generateSummary(transcript)
+                    if (!generatedSummary.isNullOrBlank()) {
+                        summary = generatedSummary.trim().removePrefix("\"").removeSuffix("\"")
+                    } else {
+                         summary = "Voice Interaction"
+                    }
+                } catch (e: Exception) {
+                    Log.w(TAG, "OpenAI summary failed, using default", e)
+                    summary = "Voice Interaction"
+                }
+                
+                // Update log object
+                val updatedLog = log.copy(summary = summary)
+                
+                // Save to Firestore and delete local if successful
+                firestoreRepository?.let { repo ->
+                    val result = repo.saveInteractionLog(updatedLog)
+                    if (result.isSuccess) {
+                        Log.d(TAG, "Log synced to Firestore, deleting local copy.")
+                        dbHelper.deleteInteractionLog(logId)
+                    } else {
+                         Log.w(TAG, "Firestore sync failed, updating local summary only.")
+                         dbHelper.updateInteractionLog(updatedLog)
+                    }
+                }
+                
+                // Also try to sync any other pending logs
+                syncAndClearLogs(userId)
+                
+            } else {
+                Log.d(TAG, "Offline: Queuing background summarization...")
+                // Launch background task for offline summarization
+                processOfflineSummary(log)
+            }
+        }
+    }
+
+    /**
+     * Process offline summary using TinyLlama when it's free.
+     * This runs in background to avoid blocking the conversation thread.
+     */
+    private fun processOfflineSummary(log: InteractionLog) {
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                // Wait a bit to ensure conversation fully releases resources
+                // In a real queue system we'd wait for a specific signal, but a delay helps here.
+                kotlinx.coroutines.delay(2000)
+                
+                Log.d(TAG, "Starting background offline summarization for ${log.id}...")
+                
+                // Ensure service is initialized (it might have been cleaned up)
+                // This call blocks if mutex is held by conversation
+                tinyLlamaService.initialize()
+                
+                val safeTranscript = if (log.transcript.length > 2000) {
+                     log.transcript.take(2000) + "...[truncated]"
+                } else {
+                     log.transcript
+                }
+
+                val systemPrompt = "You are a medical assistant. Analyze the following conversation and provide a response in exactly this format:\n" +
+                        "Title: [Symptom Name Only] (e.g. 'Semi-Handicap', 'Chest Pain'). Max 3-4 words. NO extra text.\n" +
+                        "Summary: [Detailed clinical summary of symptoms, actions, and advice. Do not miss any medical details.]\n" +
+                        "Do not include transcripts or other text."
+                        
+                val generatedSummary = tinyLlamaService.generateSimpleResponse(safeTranscript, systemPrompt)
+                
+                if (!generatedSummary.isNullOrBlank()) {
+                    val finalSummary = generatedSummary.trim().removePrefix("\"").removeSuffix("\"")
+                    val updatedLog = log.copy(summary = finalSummary)
+                    dbHelper.updateInteractionLog(updatedLog)
+                    Log.d(TAG, "Offline summary updated locally: $finalSummary")
+                }
+                
+            } catch (e: Exception) {
+                Log.e(TAG, "Error in offline summarization", e)
+            }
+        }
+    }
+
+    /**
+     * Syncs all local logs to Firestore and deletes them upon success.
+     */
+    private fun syncAndClearLogs(userId: String) {
+        CoroutineScope(Dispatchers.IO).launch {
+            Log.d(TAG, "Starting sync of local logs...")
+            val result = dbHelper.getInteractionLogs(userId, limit = 100) // Sync batch
+            val logs = result.getOrNull() ?: return@launch
+            
+            if (logs.isEmpty()) {
+                Log.d(TAG, "No local logs to sync.")
+                return@launch
+            }
+            
+            logs.forEach { log ->
+                try {
+                    // Skip logs that are still processing (if any marker exists, or just try to sync what we have)
+                    firestoreRepository?.let { repo ->
+                        val syncResult = repo.saveInteractionLog(log)
+                        if (syncResult.isSuccess) {
+                            dbHelper.deleteInteractionLog(log.id)
+                            Log.d(TAG, "Synced and deleted local log: ${log.id}")
+                        } else {
+                             Log.w(TAG, "Failed to sync log: ${log.id}")
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error syncing log: ${log.id}", e)
+                }
             }
         }
     }

@@ -43,22 +43,29 @@ class TinyLlamaInferenceService private constructor(private val context: Context
      * Initialize and ensure model file is ready.
      */
     suspend fun initialize(): Boolean = withContext(Dispatchers.IO) {
+        if (isInitialized && modelPath != null && streamingLLM?.isReady() == true) {
+            Log.d(TAG, "Already initialized, returning true")
+            return@withContext true
+        }
+
+        // Use withLock but with a check to ensure we don't deadlock if previously crashed
         inferenceMutex.withLock {
             try {
                 Log.d(TAG, "Starting TinyLlama initialization...")
                 
+                // Double check after acquiring lock
                 if (isInitialized && modelPath != null && streamingLLM?.isReady() == true) {
-                    Log.d(TAG, "Already initialized, returning true")
                     return@withLock true
                 }
 
                 // Check assets
                 Log.d(TAG, "Checking if model exists in assets...")
-                if (!modelExistsInAssets()) {
-                    Log.e(TAG, "Model file not found in assets/models/$MODEL_NAME")
-                    return@withLock false
-                }
-                Log.d(TAG, "Model found in assets")
+                // Skip asset list check if we can't list it, but rely on copy failing
+                // if (!modelExistsInAssets()) {
+                //    Log.e(TAG, "Model file not found in assets/models/$MODEL_NAME")
+                //    return@withLock false
+                // }
+                // Log.d(TAG, "Model found in assets")
 
                 // Copy to internal storage
                 Log.d(TAG, "Copying model to internal storage (this may take a while for large models)...")
@@ -88,6 +95,7 @@ class TinyLlamaInferenceService private constructor(private val context: Context
                         }
                     }
                     Log.d(TAG, "Model already loaded, returning true")
+                    isInitialized = true
                     return@withLock true
                 } else {
                     Log.e(TAG, "Failed to prepare model file - modelPath=$modelPath, exists=${modelPath?.let { File(it).exists() }}")
@@ -227,15 +235,33 @@ Do not include markdown formatting or extra text."""
      */
     suspend fun shutdown() {
         // We prevent shutdown if ANY inference is running by waiting for lock
-        inferenceMutex.withLock {
-            try {
-                streamingLLM?.cleanup()
-                streamingLLM = null
-                isInitialized = false
-                Log.d(TAG, "TinyLlama service shutdown complete")
-            } catch (e: Exception) {
-                Log.e(TAG, "Error shutting down model", e)
+        // If this hangs, it means inference is stuck, but better than crashing
+        try {
+            if (inferenceMutex.isLocked) {
+                Log.w(TAG, "Attempting shutdown while mutex locked - waiting...")
             }
+            
+            inferenceMutex.withLock {
+                try {
+                    streamingLLM?.cleanup()
+                    streamingLLM = null
+                    isInitialized = false
+                    Log.d(TAG, "TinyLlama service shutdown complete")
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error shutting down model", e)
+                }
+            }
+        } catch (e: Exception) {
+             Log.e(TAG, "Error acquiring lock for shutdown", e)
         }
+    }
+    
+    /**
+     * Force reset state (use with caution, only if stuck)
+     */
+    fun forceReset() {
+        isInitialized = false
+        // We don't clear streamingLLM here to avoid NPEs in running threads, 
+        // but we mark it as uninitialized to force re-init
     }
 }
