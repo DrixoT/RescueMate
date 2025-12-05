@@ -1,4 +1,4 @@
-package com.rescuemate.ui.components
+  package com.rescuemate.ui.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
