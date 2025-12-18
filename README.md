@@ -5,6 +5,8 @@
 [![Language](https://img.shields.io/badge/Language-Kotlin-blue.svg)](https://kotlinlang.org/)
 [![Backend](https://img.shields.io/badge/Backend-Node.js-green.svg)](https://nodejs.org/)
 [![Cloud](https://img.shields.io/badge/Cloud-Firebase-orange.svg)](https://firebase.google.com/)
+[![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Terms](https://img.shields.io/badge/Terms-Read%20Here-blue.svg)](TERMS_OF_SERVICE.md)
 
 ## Hybrid AI Emergency Response System
 
@@ -169,7 +171,6 @@ Sync Gradle. The build script will automatically inject these keys into `BuildCo
 ### Backend Setup (Optional)
 
 The backend handles reliable emergency notifications. If you plan to use emergency contact calling features:
-The backend handles reliable emergency notifications.
 
 1. Navigate to the backend directory:
    ```bash
@@ -194,6 +195,15 @@ The backend handles reliable emergency notifications.
    ```bash
    npm start
    ```
+
+## License
+
+This project uses **dual licensing**:
+
+- **Source Code**: Licensed under the [MIT License](LICENSE) - you are free to use, modify, and distribute the code
+- **Application Use**: Subject to [Terms of Service](TERMS_OF_SERVICE.md) - prohibits recreational use and restricts misuse
+
+**Important**: While the source code is open-source under MIT License, using the RescueMate application is subject to strict Terms of Service that prohibit recreational, frivolous, or non-serious use. Please read the [Terms of Service](TERMS_OF_SERVICE.md) before using the application.
 
 ## Technical Documentation
 
