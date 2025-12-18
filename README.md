@@ -1,7 +1,7 @@
 # RescueMate
 
 [![Platform](https://img.shields.io/badge/Platform-Android-green.svg)](https://www.android.com/)
-[![Demo](https://img.shields.io/badge/Demo-red.svg)](https://tryrescuemate.netlify.app/)
+[![Demo](https://img.shields.io/badge/Demo-Clickhere-red.svg)](https://tryrescuemate.netlify.app/)
 [![Language](https://img.shields.io/badge/Language-Kotlin-blue.svg)](https://kotlinlang.org/)
 [![Backend](https://img.shields.io/badge/Backend-Node.js-green.svg)](https://nodejs.org/)
 [![Cloud](https://img.shields.io/badge/Cloud-Firebase-orange.svg)](https://firebase.google.com/)
