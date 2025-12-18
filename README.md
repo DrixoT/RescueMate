@@ -80,54 +80,120 @@ Based on comprehensive evaluation using 35 representative test cases:
 ## Getting Started
 
 ### Prerequisites
--   **Android Studio**: Koala or newer (Project targets Android 15 / API 35).
--   **Node.js**: v18+ (for backend services).
--   **Firebase**: A valid `google-services.json` file.
+-   **Android Studio**: Koala or newer (Project targets Android 15 / API 35)
+-   **Node.js**: v18+ (for backend services)
+-   **Firebase**: A valid `google-services.json` file
+-   **Local AI Models**: TinyLlama and Vosk models for offline functionality (see below)
 
-### 1. Android Setup
-1.  Clone the repository.
-2.  Place your `google-services.json` file in the `app/` directory.
-3.  Create a `.env` file in the **project root** (parent of `app/`) to configure the build:
-    ```properties
-    # AI Services
-    OPENAI_API_KEY=sk-your_key_here
-    ELEVEN_API_KEY=your_elevenlabs_key
-    ELEVEN_AGENT_ID=your_agent_id
+### Step 1: Install Android Studio
 
-    # Maps & Location
-    GOOGLE_MAPS_API_KEY=your_maps_key
+1. Download and install [Android Studio](https://developer.android.com/studio) (Koala or newer)
+2. During installation, ensure the following components are installed:
+   - Android SDK (API 35)
+   - Android SDK Platform-Tools
+   - Android SDK Build-Tools
+   - NDK (Native Development Kit)
+3. Open Android Studio and complete the initial setup wizard
 
-    # Twilio (Client-side fallback)
-    TWILIO_ACCOUNT_SID=your_sid
-    TWILIO_AUTH_TOKEN=your_token
-    TWILIO_PHONE_NUMBER=your_number
-    ```
-4.  Sync Gradle. The build script will automatically inject these keys into `BuildConfig`.
-5.  Run on a device. (Note: Emulator support for Bluetooth and Sensors is limited; physical device recommended).
+### Step 2: Clone the Repository
 
-### 2. Backend Setup
+1. Clone the repository:
+   ```bash
+   git clone <repository-url>
+   cd RescueMate-2.0
+   ```
+
+### Step 3: Download Local AI Models
+
+RescueMate requires local AI models for offline functionality. These models must be downloaded and placed in the correct directories before building the application.
+
+**TinyLlama Model** (Required for offline LLM):
+- **Model**: `TinyLlama-1.1B-Chat-v0.4-Q4_K_M.gguf` (~680MB)
+- **Download**: [Hugging Face - TinyLlama Model](https://huggingface.co/TinyLlama/TinyLlama-1.1B-Chat-v0.4-GGUF)
+- **Location**: Place the `.gguf` file in `app/src/main/assets/models/`
+- **Note**: Look for the Q4_K_M quantized version specifically
+
+**Vosk Speech Recognition Model** (Required for offline STT):
+- **Model**: `vosk-model-small-en-us-0.15` (~40MB)
+- **Download**: [Vosk Models - Small English US](https://alphacephei.com/vosk/models)
+- **Location**: Extract the model directory to `app/src/main/assets/model/` (note: "model" singular, not "models")
+- **Note**: Ensure the directory structure is `app/src/main/assets/model/vosk-model-small-en-us-0.15/`
+
+**Directory Structure After Download**:
+```
+app/src/main/assets/
+├── models/
+│   └── TinyLlama-1.1B-Chat-v0.4-Q4_K_M.gguf
+└── model/
+    └── vosk-model-small-en-us-0.15/
+        ├── am/
+        ├── graph/
+        └── ... (other model files)
+```
+
+### Step 4: Configure Firebase
+
+1. Place your `google-services.json` file in the `app/` directory
+2. Ensure the file is properly configured with your Firebase project credentials
+
+### Step 5: Configure Environment Variables
+
+Create a `.env` file in the **project root** (parent of `app/`) to configure the build:
+```properties
+# AI Services
+OPENAI_API_KEY=sk-your_key_here
+ELEVEN_API_KEY=your_elevenlabs_key
+ELEVEN_AGENT_ID=your_agent_id
+
+# Maps & Location
+GOOGLE_MAPS_API_KEY=your_maps_key
+
+# Twilio (Client-side fallback)
+TWILIO_ACCOUNT_SID=your_sid
+TWILIO_AUTH_TOKEN=your_token
+TWILIO_PHONE_NUMBER=your_number
+```
+
+Sync Gradle. The build script will automatically inject these keys into `BuildConfig`.
+
+### Step 6: Build and Run
+
+1. Open the project in Android Studio
+2. Wait for Gradle sync to complete
+3. Connect an Android device via USB (or use an emulator, though Bluetooth and Sensors support is limited)
+4. Enable USB debugging on your device
+5. Click "Run" or press `Shift+F10` to build and install the app
+
+**Note**: The first build may take several minutes as it compiles native libraries (llama.cpp) and processes the AI models. Ensure you have sufficient disk space (~2GB free recommended).
+
+### Backend Setup (Optional)
+
+The backend handles reliable emergency notifications. If you plan to use emergency contact calling features:
 The backend handles reliable emergency notifications.
 
-1.  Navigate to the backend directory:
-    ```bash
-    cd backend-emergency
-    ```
-2.  Install dependencies:
-    ```bash
-    npm install
-    ```
-3.  Configure environment variables in `backend-emergency/.env`:
-    ```properties
-    PORT=3000
-    MONGODB_URI=mongodb://localhost:27017/rescuemate
-    TWILIO_ACCOUNT_SID=your_sid
-    TWILIO_AUTH_TOKEN=your_token
-    TWILIO_PHONE_NUMBER=your_number
-    ```
-4.  Start the server:
-    ```bash
-    npm start
-    ```
+1. Navigate to the backend directory:
+   ```bash
+   cd backend-emergency
+   ```
+
+2. Install dependencies:
+   ```bash
+   npm install
+   ```
+
+3. Configure environment variables in `backend-emergency/.env`:
+   ```properties
+   PORT=3000
+   MONGODB_URI=mongodb://localhost:27017/rescuemate
+   TWILIO_ACCOUNT_SID=your_sid
+   TWILIO_AUTH_TOKEN=your_token
+   TWILIO_PHONE_NUMBER=your_number
+   ```
+
+4. Start the server:
+   ```bash
+   npm start
+   ```
 
 ## Technical Documentation
 
