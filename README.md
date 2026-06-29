@@ -101,7 +101,7 @@ Based on comprehensive evaluation using 35 representative test cases:
 
 1. Clone the repository:
    ```bash
-   git clone <repository-url>
+   git clone (https://github.com/DrixoT/RescueMate.git)
    cd RescueMate-2.0
    ```
 
